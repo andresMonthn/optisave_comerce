@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OptiSave — Panel Comercial</title>
+    <link rel="icon" type="image/x-icon" href="assets/Optisave_Ic-noBg.ico" />
+    <link rel="shortcut icon" type="image/x-icon" href="assets/Optisave_Ic-noBg.ico" />
+    <link rel="icon" type="image/png" href="assets/Optisave_Ic-noBg.png" />
+    <link rel="apple-touch-icon" href="assets/Optisave_Ic-noBg.png" />
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+    <!-- ============================================================ -->
+    <!-- LOGIN — usuario/clave estáticos (validados contra la BD)      -->
+    <!-- ============================================================ -->
+    <div id="loginScreen" class="login-screen">
+        <div class="login-card">
+            <div class="login-brand">
+                <img src="assets/Optisave_LgL-noBg.png" alt="OptiSave" />
+            </div>
+            <p class="login-title">Panel Comercial</p>
+            <p class="login-sub">Ingresa tu usuario y clave.</p>
+            <div class="login-field">
+                <span class="label">Usuario</span>
+                <input type="text" id="loginUsuario" autocomplete="username" />
+            </div>
+            <div class="login-field">
+                <span class="label">Clave</span>
+                <input type="password" id="loginClave" autocomplete="current-password" />
+            </div>
+            <button id="loginBtn">Entrar</button>
+            <div class="text-muted" id="loginError"></div>
+        </div>
+    </div>
+
+    <div class="app" id="app" style="display:none;">
+
+        <!-- HEADER -->
+        <div class="header-wrap">
+            <div class="brand">
+                <img src="assets/Optisave_LgL-noBg.png" alt="OptiSave" class="brand-logo" />
+                <span class="brand-sub">Panel Comercial</span>
+            </div>
+            <div class="header-actions">
+                <span class="subhead" id="subheadStatus">Cargando configuración desde el servidor…</span>
+                <span class="subhead" id="sessionBadge" style="display:none;"></span>
+                <button id="logoutBtn" style="display:none;">Cerrar sesión</button>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- PANEL ADMIN                                                   -->
+        <!-- ============================================================ -->
+        <div id="panelAdmin">
+
+            <div class="tabs" id="adminTabs">
+                <button class="tab-btn active" data-tab="config">Configuración</button>
+                <button class="tab-btn" data-tab="vendedores">Vendedores</button>
+                <button class="tab-btn" data-tab="resumen">Resumen general</button>
+                <button class="tab-btn" data-tab="simulador">Simulador</button>
+            </div>
+
+            <!-- TAB: CONFIGURACIÓN (precios/IVA, tramos de comisión, bono) -->
+            <div class="tab-panel active" data-tab-panel="config">
+                <div class="card">
+                    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:4px;">
+                        <div class="section-title" style="margin:0;">Parámetros comerciales</div>
+                        <button type="button" id="refreshConfigBtn" class="secondary-btn">Recargar desde BD</button>
+                    </div>
+                    <div class="text-muted" id="configUpdatedMeta" style="margin-bottom:14px;">Cargando…</div>
+                    <div class="row">
+                        <div class="col" style="flex:2;min-width:240px;">
+                            <div class="section-label">Precios e IVA <span class="hint">(solo lectura · config. en BD)</span></div>
+                            <div class="row gap-sm">
+                                <div class="col" style="flex:1;min-width:140px;">
+                                    <span class="label">Licencia Doctor <span class="hint">(mensual)</span></span>
+                                    <span class="readonly-box" id="doctorPrice">—</span>
+                                </div>
+                                <div class="col" style="flex:1;min-width:140px;">
+                                    <span class="label">Licencia Desktop <span class="hint">(anual)</span></span>
+                                    <span class="readonly-box" id="desktopPrice">—</span>
+                                </div>
+                                <div class="col" style="flex:1;min-width:140px;">
+                                    <span class="label">Comisión fija Desktop</span>
+                                    <span class="readonly-box" id="desktopCommissionFixed">—</span>
+                                </div>
+                                <div class="col" style="flex:1;min-width:120px;">
+                                    <span class="label">IVA <span class="hint">(México)</span></span>
+                                    <span class="readonly-box" id="vatRate">—</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col" style="flex:1.5;min-width:240px;">
+                            <div class="section-label">Tramo comisión Doctor <span class="hint">(ventas nuevas · editable en BD)</span></div>
+                            <div class="tier-display" id="tramosComisionDisplay"><span>Cargando…</span></div>
+                        </div>
+                        <div class="col" style="flex:1.5;min-width:220px;">
+                            <div class="section-label">Bono trimestral <span class="hint">(activos retenidos · editable en BD)</span></div>
+                            <div class="tier-display" id="tramosBonoDisplay"><span>Cargando…</span></div>
+                        </div>
+                    </div>
+                    <div class="note-tramo">
+                        Precios, tasas de comisión y montos de bono se leen del documento <strong>config_activa</strong> en MongoDB.
+                        Al editarlos en la BD, pulsa <strong>Recargar desde BD</strong> para actualizar el panel y el simulador.
+                        Los tramos <strong>NO</strong> son marginales — todo el volumen del periodo se comisiona/bonifica al % o monto del tramo alcanzado.
+                        El bono se paga cada trimestre según doctores activos retenidos al cierre del mes 3, 6, 9…
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: VENDEDORES (alta con correo/clave + activar/desactivar acceso) -->
+            <div class="tab-panel" data-tab-panel="vendedores">
+                <div class="card">
+                    <div class="row" style="justify-content:space-between;align-items:center;">
+                        <div class="section-title" style="margin:0;">Vendedores / agentes de venta</div>
+                        <div class="row gap-sm" style="width:auto;">
+                            <button id="refreshVendedoresBtn" class="secondary-btn">Refrescar</button>
+                            <button id="openAddVendedorDialogBtn">Agregar agente</button>
+                        </div>
+                    </div>
+                    <div class="table-wrap" style="margin-top:14px;">
+                        <table id="vendedoresTable">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Correo (usuario)</th>
+                                    <th>Acceso</th>
+                                    <th>Clientes registrados</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="vendedoresBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DIALOG: Agregar agente de venta (crea Vendedor + Usuario) -->
+            <dialog id="addVendedorDialog" class="app-dialog">
+                <form method="dialog" id="addVendedorForm">
+                    <h3>Agregar agente de venta</h3>
+                    <div class="dialog-field">
+                        <span class="label">Nombre</span>
+                        <input type="text" id="newVendedorNombre" placeholder="Nombre del agente" />
+                    </div>
+                    <div class="dialog-field">
+                        <span class="label">Correo (será su usuario para entrar)</span>
+                        <input type="text" id="newVendedorEmail" placeholder="correo@optisave.com" autocomplete="off" />
+                    </div>
+                    <div class="dialog-field">
+                        <span class="label">Clave</span>
+                        <input type="password" id="newVendedorClave" placeholder="Mínimo 6 caracteres" autocomplete="new-password" />
+                    </div>
+                    <div class="dialog-field">
+                        <span class="label">Teléfono <span class="hint">(opcional)</span></span>
+                        <input type="text" id="newVendedorTelefono" placeholder="Opcional" />
+                    </div>
+                    <div class="text-muted" id="vendedorAddStatus" style="margin:6px 0;"></div>
+                    <div class="dialog-actions">
+                        <button type="button" id="cancelAddVendedorBtn" class="secondary-btn">Cancelar</button>
+                        <button type="button" id="saveVendedorBtn">Crear agente</button>
+                    </div>
+                </form>
+            </dialog>
+
+            <!-- DIALOG: Cambiar clave de un agente -->
+            <dialog id="claveDialog" class="app-dialog">
+                <form method="dialog" id="claveForm">
+                    <h3>Cambiar clave</h3>
+                    <p class="text-muted" id="claveDialogNombre"></p>
+                    <div class="dialog-field">
+                        <span class="label">Nueva clave</span>
+                        <input type="password" id="claveDialogInput" placeholder="Mínimo 6 caracteres" autocomplete="new-password" />
+                    </div>
+                    <div class="text-muted" id="claveDialogStatus" style="margin:6px 0;"></div>
+                    <div class="dialog-actions">
+                        <button type="button" id="cancelClaveBtn" class="secondary-btn">Cancelar</button>
+                        <button type="button" id="saveClaveBtn">Guardar clave</button>
+                    </div>
+                </form>
+            </dialog>
+
+            <!-- TAB: RESUMEN GENERAL (ventas por ejecutivo + balance) -->
+            <div class="tab-panel" data-tab-panel="resumen">
+                <div class="card">
+                    <div class="section-title">Ventas por vendedor y balance <span class="section-sub">(vista consolidada — utilidad de la empresa)</span></div>
+                    <div class="row gap-sm" style="margin-bottom:12px;align-items:flex-end;">
+                        <div class="col" style="flex:0 0 160px;">
+                            <span class="label">Periodo a consultar</span>
+                            <input type="text" id="resumenPeriodoInput" class="period" placeholder="2026-08" />
+                        </div>
+                    </div>
+                    <div class="table-wrap">
+                        <table id="salesTable">
+                            <thead>
+                                <tr>
+                                    <th style="min-width:100px;">Vendedor</th>
+                                    <th style="min-width:90px;">Periodo</th>
+                                    <th style="min-width:80px;">Doctores NUEVOS</th>
+                                    <th style="min-width:80px;">Desktop vendidas</th>
+                                    <th style="min-width:80px;">Doctores activos</th>
+                                    <th style="min-width:70px;">% Comisión</th>
+                                    <th style="min-width:80px;">Comisión Doctor ($)</th>
+                                    <th style="min-width:80px;">Comisión Desktop ($)</th>
+                                    <th style="min-width:80px;">Bono ($)</th>
+                                    <th style="min-width:90px;">Total a pagar ($)</th>
+                                    <th style="min-width:90px;">Prom. x cliente</th>
+                                    <th style="min-width:90px;">Ganancia sin IVA</th>
+                                    <th style="min-width:90px;">Ganancia − Comisión</th>
+                                </tr>
+                            </thead>
+                            <tbody id="salesBody"></tbody>
+                            <tfoot id="salesFoot"></tfoot>
+                        </table>
+                    </div>
+                    <div class="text-muted" style="margin-top:8px;">Estos datos se calculan automáticamente a partir de los clientes registrados por cada vendedor. No se editan aquí.</div>
+                </div>
+
+                <div class="card">
+                    <div class="section-title">Balance general, MRR y decisión</div>
+                    <div class="balance-grid" id="balanceGrid">
+                        <div class="balance-item"><span class="label">Ingreso Doctor (sin IVA)</span><span class="value blue" id="bDoctorRevenue">$0</span></div>
+                        <div class="balance-item"><span class="label">Ingreso Desktop (sin IVA, anual)</span><span class="value blue" id="bDesktopRevenue">$0</span></div>
+                        <div class="balance-item"><span class="label">MRR Total</span><span class="value" id="bMRR">$0</span><span class="sub">(Doctor + Desktop/12)</span></div>
+                        <div class="balance-item"><span class="label">ARR Estimado</span><span class="value" id="bARR">$0</span><span class="sub">(MRR × 12)</span></div>
+                        <div class="balance-item"><span class="label">IVA total (informativo)</span><span class="value" id="bVAT">$0</span></div>
+                        <div class="balance-item"><span class="label">Ingreso total del periodo (sin IVA)</span><span class="value" id="bTotalIncome">$0</span></div>
+                        <div class="balance-item"><span class="label">Costo comercial total</span><span class="value amber" id="bCommercialCost">$0</span><span class="sub">(comisiones + bono)</span></div>
+                        <div class="balance-item"><span class="label">Utilidad neta</span><span class="value green" id="bNetProfit">$0</span><span class="sub">(Ingreso − Costo)</span></div>
+                        <div class="balance-item"><span class="label">% Costo comercial / ingreso</span><span class="value" id="bCostPercent">0%</span></div>
+                        <div class="balance-item"><span class="label">% Margen neto</span><span class="value" id="bMarginPercent">0%</span></div>
+                    </div>
+                    <div class="semaforo">
+                        <span><span class="dot green"></span> <span class="tag">Margen ≥ 55%</span> — esquema saludable</span>
+                        <span><span class="dot amber"></span> <span class="tag">40–55%</span> — vigilar</span>
+                        <span><span class="dot rose"></span> <span class="tag">&lt; 40%</span> — revisar precio / comisiones</span>
+                        <span class="semaforo-status" id="semaforoStatus">—</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: SIMULADOR — captura mes a mes con cancelaciones web -->
+            <div class="tab-panel" data-tab-panel="simulador">
+                <div class="card">
+                    <div class="section-title">Simulador comercial <span class="section-sub">— captura mes a mes</span></div>
+                    <div class="sim-subhead">
+                        Captura en cada mes las licencias Web vendidas, las Desktop anuales y las cancelaciones Web (doctores que dejan
+                        de pagar después de 1–10 meses, por ejemplo). El simulador recalcula la base activa acumulada, el ingreso recurrente,
+                        el tramo de comisión sobre ventas nuevas, el bono trimestral sobre activos retenidos y tu utilidad neta.
+                        <strong>Nada de esto se guarda ni afecta datos reales.</strong>
+                    </div>
+
+                    <div class="sim-controls">
+                        <div class="col" style="flex:0 0 150px;">
+                            <span class="label">Meses a simular</span>
+                            <input type="number" id="whatifMonths" min="1" max="36" step="1" value="12" />
+                        </div>
+                        <div class="col">
+                            <button type="button" id="whatifResetBtn" class="secondary-btn">Limpiar tabla</button>
+                        </div>
+                    </div>
+
+                    <div class="table-wrap" style="margin-top:16px;">
+                        <table id="whatifTable" class="sim-table-wide">
+                            <thead>
+                                <tr>
+                                    <th style="min-width:52px;">Mes</th>
+                                    <th style="min-width:96px;">Lic. vendidas Web</th>
+                                    <th style="min-width:96px;">Lic. Desktop anual</th>
+                                    <th style="min-width:96px;">Cancelaciones Web</th>
+                                    <th style="min-width:80px;">Total Web</th>
+                                    <th style="min-width:80px;">Total Desktop</th>
+                                    <th style="min-width:88px;">Lic. acumuladas</th>
+                                    <th style="min-width:58px;">Tramo</th>
+                                    <th style="min-width:88px;">Ingreso</th>
+                                    <th style="min-width:96px;">Ingreso acum.</th>
+                                    <th style="min-width:92px;">Comisión Web</th>
+                                    <th style="min-width:92px;">Comisión Desktop</th>
+                                    <th style="min-width:110px;">Comisión vendedor + bono</th>
+                                    <th style="min-width:96px;">Utilidad del mes</th>
+                                </tr>
+                            </thead>
+                            <tbody id="whatifBody"></tbody>
+                            <tfoot id="whatifFoot"></tfoot>
+                        </table>
+                    </div>
+
+                    <div class="balance-grid" id="whatifSummaryGrid" style="margin-top:18px;">
+                        <div class="balance-item"><span class="label">Web vendidas (total)</span><span class="value blue" id="wTotalWeb">0</span></div>
+                        <div class="balance-item"><span class="label">Desktop vendidas (total)</span><span class="value blue" id="wTotalDesktop">0</span></div>
+                        <div class="balance-item"><span class="label">Cancelaciones Web (total)</span><span class="value" id="wTotalCancel">0</span></div>
+                        <div class="balance-item"><span class="label">Activas al cierre</span><span class="value blue" id="wActivasFinal">0</span></div>
+                        <div class="balance-item"><span class="label">Ingreso total (sin IVA)</span><span class="value blue" id="wTotalIncome">$0</span></div>
+                        <div class="balance-item"><span class="label">Comisión Web total</span><span class="value" id="wTotalCommWeb">$0</span></div>
+                        <div class="balance-item"><span class="label">Comisión Desktop total</span><span class="value" id="wTotalCommDesktop">$0</span></div>
+                        <div class="balance-item"><span class="label">Comisión vendedor + bono</span><span class="value amber" id="wTotalPagoVendedor">$0</span></div>
+                        <div class="balance-item"><span class="label">Utilidad neta total</span><span class="value green" id="wTotalNet">$0</span></div>
+                        <div class="balance-item"><span class="label">% Margen neto</span><span class="value" id="wMarginPercent">0%</span></div>
+                        <div class="balance-item"><span class="label">MRR al cierre</span><span class="value" id="wMRRFinal">$0</span><span class="sub" id="wMRRSub">activas × precio Web</span></div>
+                    </div>
+                    <div class="text-muted" style="margin-top:8px;">
+                        <strong>Lic. acumuladas</strong> = activas Web al cierre (mes anterior + ventas Web − cancelaciones).
+                        <strong>Total Web / Desktop</strong> = licencias vendidas acumuladas hasta ese mes.
+                        <strong>Comisión Web</strong> = ventas Web del mes × tramo. <strong>Comisión Desktop</strong> = comisión fija × ventas Desktop del mes.
+                        <strong>Comisión vendedor + bono</strong> = comisión Web + comisión Desktop + bono trimestral (meses 3, 6, 9…).
+                        Los tramos no son marginales. Precios y tramos se recalculan al recargar la configuración.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- PANEL VENDEDOR                                                -->
+        <!-- ============================================================ -->
+        <div id="panelVendedor" style="display:none;">
+
+            <div class="tabs" id="vendedorTabs">
+                <button class="tab-btn active" data-tab="misClientes">Mis clientes</button>
+                <button class="tab-btn" data-tab="miBalance">Mi cierre de mes</button>
+                <button class="tab-btn" data-tab="miSimulador">Mi cartera real</button>
+            </div>
+
+            <!-- TAB: MIS CLIENTES (alta y cambio de estado vía diálogo — nunca se elimina) -->
+            <div class="tab-panel active" data-tab-panel="misClientes">
+                <div class="card">
+                    <div class="row" style="justify-content:space-between;align-items:center;">
+                        <div class="section-title" style="margin:0;">Mis clientes</div>
+                        <button id="openAddClienteDialogBtn">Agregar cliente</button>
+                    </div>
+
+                    <div class="row gap-sm" style="margin:14px 0 10px 0;">
+                        <div class="col" style="flex:0 0 auto;">
+                            <span class="label">Filtrar por estado</span>
+                            <select id="filtroEstadoCartera">
+                                <option value="">Todos</option>
+                                <option value="prospecto">Prospecto</option>
+                                <option value="vendido">Vendido</option>
+                                <option value="activo">Activo</option>
+                                <option value="cancelado">Cancelado</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="table-wrap">
+                        <table id="misClientesTable">
+                            <thead>
+                                <tr>
+                                    <th>Clínica</th>
+                                    <th>Contacto</th>
+                                    <th>Especialidad</th>
+                                    <th>Tipo</th>
+                                    <th>Estado</th>
+                                    <th>Último seguimiento</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="misClientesBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="text-muted" style="margin-top:8px;">Los clientes nunca se eliminan — solo cambian de estado.</div>
+                </div>
+            </div>
+
+            <!-- DIALOG: Agregar cliente -->
+            <dialog id="addClienteDialog" class="app-dialog">
+                <form method="dialog" id="addClienteForm">
+                    <h3>Agregar cliente</h3>
+                    <div class="dialog-field">
+                        <span class="label">Nombre de la clínica</span>
+                        <input type="text" id="newClienteNombreClinica" placeholder="Clínica / consultorio" />
+                    </div>
+                    <div class="dialog-field">
+                        <span class="label">Contacto</span>
+                        <input type="text" id="newClienteContacto" placeholder="Dr. Nombre" />
+                    </div>
+                    <div class="dialog-field">
+                        <span class="label">Especialidad</span>
+                        <input type="text" id="newClienteEspecialidad" placeholder="Oftalmología, óptica…" />
+                    </div>
+                    <div class="dialog-field">
+                        <span class="label">Tipo de licencia</span>
+                        <select id="newClienteTipo">
+                            <option value="doctor">Doctor (mensual)</option>
+                            <option value="desktop">Desktop (anual)</option>
+                        </select>
+                    </div>
+                    <div class="dialog-field">
+                        <span class="label">Estado</span>
+                        <select id="newClienteEstado">
+                            <option value="prospecto">Prospecto</option>
+                            <option value="vendido">Vendido</option>
+                            <option value="activo">Activo</option>
+                            <option value="cancelado">Cancelado</option>
+                        </select>
+                    </div>
+                    <div class="text-muted" id="clienteAddStatus" style="margin:6px 0;"></div>
+                    <div class="dialog-actions">
+                        <button type="button" id="cancelAddClienteBtn" class="secondary-btn">Cancelar</button>
+                        <button type="button" id="saveClienteBtn">Guardar cliente</button>
+                    </div>
+                </form>
+            </dialog>
+
+            <!-- DIALOG: Cambiar estado -->
+            <dialog id="estadoDialog" class="app-dialog">
+                <form method="dialog" id="estadoForm">
+                    <h3>Cambiar estado</h3>
+                    <p class="text-muted" id="estadoDialogClienteNombre"></p>
+                    <div class="dialog-field">
+                        <span class="label">Nuevo estado</span>
+                        <select id="estadoDialogSelect">
+                            <option value="prospecto">Prospecto</option>
+                            <option value="vendido">Vendido</option>
+                            <option value="activo">Activo</option>
+                            <option value="cancelado">Cancelado</option>
+                        </select>
+                    </div>
+                    <div class="text-muted" id="estadoDialogStatus" style="margin:6px 0;"></div>
+                    <div class="dialog-actions">
+                        <button type="button" id="cancelEstadoBtn" class="secondary-btn">Cancelar</button>
+                        <button type="button" id="saveEstadoBtn">Guardar</button>
+                    </div>
+                </form>
+            </dialog>
+
+            <!-- TAB: MI BALANCE (solo su comisión, no la utilidad de la empresa) -->
+            <div class="tab-panel" data-tab-panel="miBalance">
+                <div class="card">
+                    <div class="section-title">Cierre de mes — lo que me corresponde</div>
+                    <div class="row gap-sm" style="margin-bottom:12px;align-items:flex-end;">
+                        <div class="col" style="flex:0 0 160px;">
+                            <span class="label">Periodo</span>
+                            <input type="text" id="vPeriodoInput" class="period" placeholder="2026-08" />
+                        </div>
+                    </div>
+                    <div class="text-muted" id="vDeclaracionStatus" style="margin-bottom:10px;"></div>
+                    <div class="balance-grid" id="miBalanceGrid">
+                        <div class="balance-item"><span class="label">Doctores nuevos</span><span class="value blue" id="vNewDoctors">0</span></div>
+                        <div class="balance-item"><span class="label">Desktop vendidas</span><span class="value blue" id="vDesktopSold">0</span></div>
+                        <div class="balance-item"><span class="label">Doctores activos</span><span class="value blue" id="vActiveDoctors">0</span></div>
+                        <div class="balance-item"><span class="label">Tramo de comisión alcanzado</span><span class="value" id="vCommRate">—</span></div>
+                        <div class="balance-item"><span class="label">Comisión por Doctor</span><span class="value green" id="vCommDoctor">$0</span></div>
+                        <div class="balance-item"><span class="label">Comisión por Desktop</span><span class="value green" id="vCommDesktop">$0</span></div>
+                        <div class="balance-item"><span class="label">Bono trimestral</span><span class="value green" id="vBono">$0</span></div>
+                        <div class="balance-item"><span class="label">Total a recibir</span><span class="value green" id="vTotal" style="font-size:22px;">$0</span></div>
+                    </div>
+                    <div class="text-muted" style="margin-top:10px;">Este panel solo muestra tu comisión y bono — no la utilidad ni el ingreso de OptiSave.</div>
+                </div>
+            </div>
+
+            <!-- TAB: MI CARTERA REAL (proyección con clientes registrados) -->
+            <div class="tab-panel" data-tab-panel="miSimulador">
+                <div class="card">
+                    <div class="section-title">Mi cartera — proyección con datos reales</div>
+                    <div class="sim-subhead">
+                        Comisiones y bono calculados con tus clientes registrados y la configuración vigente en la BD.
+                        No son escenarios hipotéticos.
+                    </div>
+                    <div class="row gap-sm" style="margin-bottom:12px;align-items:flex-end;">
+                        <div class="col" style="flex:0 0 160px;">
+                            <span class="label">Periodo</span>
+                            <input type="text" id="vSimPeriodoInput" class="period" placeholder="2026-08" />
+                        </div>
+                    </div>
+                    <div class="text-muted" id="vSimRealStatus" style="margin-bottom:10px;"></div>
+                    <div class="balance-grid" id="vSimRealGrid">
+                        <div class="balance-item"><span class="label">Clientes en cartera</span><span class="value blue" id="vSimTotalClientes">0</span></div>
+                        <div class="balance-item"><span class="label">Doctores nuevos (Web)</span><span class="value blue" id="vSimNewDoctors">0</span></div>
+                        <div class="balance-item"><span class="label">Desktop vendidas</span><span class="value blue" id="vSimDesktopSold">0</span></div>
+                        <div class="balance-item"><span class="label">Doctores activos</span><span class="value blue" id="vSimActiveDoctors">0</span></div>
+                        <div class="balance-item"><span class="label">Tramo comisión</span><span class="value" id="vSimCommRate">—</span></div>
+                        <div class="balance-item"><span class="label">Comisión Web</span><span class="value green" id="vSimCommDoctor">$0</span></div>
+                        <div class="balance-item"><span class="label">Comisión Desktop</span><span class="value green" id="vSimCommDesktop">$0</span></div>
+                        <div class="balance-item"><span class="label">Bono trimestral</span><span class="value green" id="vSimBono">$0</span></div>
+                        <div class="balance-item"><span class="label">Total a recibir</span><span class="value green" id="vSimTotal" style="font-size:22px;">$0</span></div>
+                    </div>
+                    <div class="table-wrap" style="margin-top:18px;">
+                        <table id="vSimClientesTable">
+                            <thead>
+                                <tr>
+                                    <th>Clínica</th>
+                                    <th>Contacto</th>
+                                    <th>Tipo</th>
+                                    <th>Estado</th>
+                                    <th>Último seguimiento</th>
+                                </tr>
+                            </thead>
+                            <tbody id="vSimClientesBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="text-muted" style="margin-top:8px;">
+                        Los totales se actualizan al agregar clientes o cambiar su estado. El bono trimestral aplica en periodos marzo, junio, septiembre y diciembre.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- FOOTER -->
+        <div class="footer">
+            OptiSave · Panel Comercial · Todos los cálculos automáticos
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

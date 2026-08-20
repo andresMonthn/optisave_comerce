@@ -1,0 +1,15 @@
+// ============================================================
+// AGREGAR a server.js, junto a tus otros fastify.register(...):
+// ============================================================
+
+// 1. Plugin de auth (regístralo ANTES que las rutas que lo usan)
+fastify.register(require('./plugins/auth'));
+
+// 2. Ruta de login (pública, sin preHandler)
+fastify.register(require('./routes/auth'));
+
+// 3. Tus rutas existentes — SIN CAMBIO en el register, la protección
+//    se agrega adentro de cada archivo de rutas (ver siguiente sección)
+fastify.register(require('./routes/configComercial'));
+fastify.register(require('./routes/vendedores'));
+fastify.register(require('./routes/clientes'));

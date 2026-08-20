@@ -1,0 +1,8 @@
+<svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-label="Google Gemini">
+  <title>Google Gemini</title>
+  <path fill="#4285F4" d="M12 2L4 6.5v11L12 22l8-4.5v-11L12 2z"/>
+  <path fill="#34A853" d="M12 2v9.5L4 6.5 12 2z"/>
+  <path fill="#FBBC05" d="M20 6.5 12 11.5V2l8 4.5z"/>
+  <path fill="#EA4335" d="M12 22V12.5l8-4v11L12 22z"/>
+  <path fill="#fff" opacity="0.9" d="M12 11.5 4 6.5 12 12v-.5z"/>
+</svg>

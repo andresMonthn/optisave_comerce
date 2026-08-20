@@ -1,0 +1,44 @@
+// apps/web/app/api/chat/route.ts
+import { NextResponse } from "next/server";
+
+export async function POST(req: Request) {
+  try {
+    const { prompt } = await req.json();
+
+    if (!prompt) {
+      return NextResponse.json(
+        { error: "No se recibió ningún mensaje." },
+        { status: 400 }
+      );
+    }
+
+    // Llamada directa al servidor de Ollama local
+    const ollamaResponse = await fetch("http://localhost:11434/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "llama3:latest",
+        prompt: prompt,
+        stream: false,
+      }),
+    });
+
+    if (!ollamaResponse.ok) {
+      return NextResponse.json(
+        { error: "Error al conectar con Ollama." },
+        { status: 500 }
+      );
+    }
+
+    const data = await ollamaResponse.json();
+    const responseText = data.response || "No hubo respuesta del modelo.";
+
+    return NextResponse.json({ response: responseText });
+  } catch (error) {
+    console.error("Error en /api/chat:", error);
+    return NextResponse.json(
+      { error: "Error en respuesta del asistente." },
+      { status: 500 }
+    );
+  }
+}

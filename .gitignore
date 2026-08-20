@@ -1,0 +1,11 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.vercel/
+*.log
+.DS_Store
+
+# Archivos locales con credenciales (no subir)
+valores_dev_.txt
+Recursos/env - version previa.txt

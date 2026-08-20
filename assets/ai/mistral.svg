@@ -1,0 +1,5 @@
+<svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-label="Mistral">
+  <title>Mistral</title>
+  <rect width="24" height="24" rx="5" fill="#FF7000"/>
+  <path fill="#fff" d="M6 7h2.2v10H6V7zm4.4 0h2.2l3.4 6.8V7h2.2v10h-2.2l-3.4-6.8V17H10.4V7z"/>
+</svg>

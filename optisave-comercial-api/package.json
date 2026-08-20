@@ -1,0 +1,22 @@
+{
+  "name": "optisave-comercial-api",
+  "version": "1.0.0",
+  "description": "API Fastify + Mongoose para sistema integral de comisiones OptiSave",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "seed:config": "node src/jobs/seedConfigComercial.js",
+    "job:generarDeclaraciones": "node src/jobs/generarDeclaraciones.js"
+  },
+  "dependencies": {
+    "@fastify/cors": "^8.5.0",
+    "@fastify/jwt": "^7.2.4",
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^16.4.5",
+    "fastify": "^4.28.1",
+    "fastify-plugin": "^4.5.1",
+    "mongoose": "^8.5.1"
+  }
+}

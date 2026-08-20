@@ -1,0 +1,54 @@
+MANUAL
+
+F  L U J O S   D E     P A C I E N T E -
+***********
+Lo mas importante es tener un flujo adecuado a través de estados
+los estados son constantes que, tienen que cumplir de ciertos factores
+dentro del flujo de la app es un tiempo de vida de los datos
+para comprenderlo debemos de conocer como es el flujo y es 
+la siguiente manera
+**************
+-Usuario inicia sesión (visualiza Panel) 
+-en la creación de paciente hay dos formas una el usuario lo registra
+ y la segunda el paciente se registra a partir de un QR seguro (lo proporciona la app)
+-con los datos completos y validados estos guarda en opticsave 
+puedes trabajar de manera offline pero para la sincronización debes de estar 
+conectado a una conexión estable de internet
+-la propia app detecta si la fecha de la cita  es para el dia de hoy y redirige a 'historial clinico'
+(cabe mencionar solo aplica si el usuario registro paciente en la app no paciente desde el QR)
+-el historial clínico le muestra la información que capturo el usuario o la que ha rellenado el paciente
+en ella se detecta el estado en el que esta el usuario como los siguiente manera-
+******************************************************
+--programado -fecha de la cita tiene un fecha en el futuro
+--pendiente -fecha de la cita tiene un fecha para el dia de hoy
+--expirado -fecha de la cita  ya paso y no se detectaron cambios
+--completado - se automatiza cuando el paciente tiene registro en diagnostico recetas y posteriormente Usuario requisita una OrdenRX
+este se automatiza para el dia de ayer.
+
+*******************************************************
+
+al finalizar los datos el paciente contara con 1 registro paciente este será una clave única por si es cliente frecuente
+contara con diagnostico esta información se percibirá como tal cual la cita facturble por que contara con
+el precio de la cita configurada previamente en el app que puede ser mas de una
+por cada cita el paciente tendrá una orden RX la app detecta el registro y niega realizar una mas de una cita 
+el mismo dia.
+
+
+notas los pacientes que se registran en QR se les declara los términos de privacidad
+no se pueden editar ni eliminar las ordenes rx por seguridad y mantener la integridad de tus registros
+
+los estado ayudan a mantener sincronizada la aplicación y por ello hay condiciones implícitas agregadas:
+--programado como es una cita próxima a llegar esta se puede editar o incluso eliminar 
+  pero no agregar próxima visita por ende, y no puedes hacer recetas
+--pendiente en esta puedes inicalizar recetas (comenzaran con 'N' de netro para uso y final de cada ojo (4)
+si puedes editar o oncluso reagendar. Reagendar cita si el paciente cambia de opinion
+--expirado se puede editar, eliminar o reagendar el sistema te va indicar los pacientes que ya están expirados, las dos opciones es 
+eliminarlos o re-agendarlos, o no hacer nada
+--completado , solo puedes generar una nueva cita
+
+
+
+**editar se refiere a los datos principales del paciente no incluye hora, fecha de nacieminet
+
+
+ 
