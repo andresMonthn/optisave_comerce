@@ -58,13 +58,15 @@ body {
         'Inter', 'Segoe UI', Roboto, system-ui, sans-serif;
     background: transparent;
     color: var(--text-primary);
-    padding: 28px 22px 60px;
+    padding: 28px max(22px, env(safe-area-inset-right)) max(60px, env(safe-area-inset-bottom)) max(22px, env(safe-area-inset-left));
     line-height: 1.5;
     min-height: 100vh;
+    min-height: 100dvh;
     position: relative;
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    -webkit-tap-highlight-color: transparent;
 }
 
 /* Ambient gradient blobs — el respaldo "glass" */
@@ -417,6 +419,8 @@ input.sim-input {
     overflow-x: auto;
     margin-top: 6px;
     border-radius: var(--radius-md);
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
 }
 
 table {
@@ -707,13 +711,79 @@ table td input.whatif-input {
 }
 
 /* ===== RESPONSIVE ===== */
+@media (max-width: 900px) {
+    .header-actions {
+        width: 100%;
+    }
+
+    .header-actions .subhead {
+        flex: 1 1 auto;
+        max-width: 100%;
+        white-space: normal;
+        text-align: left;
+        line-height: 1.35;
+    }
+
+    .card > .row:first-of-type {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+
+    .card > .row:first-of-type > .row.gap-sm {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .card > .row:first-of-type button {
+        width: 100%;
+    }
+
+    .card > .row .col {
+        flex: 1 1 100% !important;
+        min-width: 0 !important;
+        width: 100%;
+    }
+
+    .card .row.gap-sm .col[style*="flex:0"] {
+        flex: 1 1 100% !important;
+        width: 100%;
+    }
+
+    input[type="number"],
+    input[type="text"],
+    input[type="password"],
+    select,
+    input.period,
+    input.executive,
+    input.sim-input {
+        max-width: 100%;
+        width: 100%;
+    }
+
+    .readonly-box {
+        display: block;
+        width: 100%;
+    }
+
+    .sim-controls .col {
+        flex: 1 1 100% !important;
+        width: 100%;
+    }
+
+    .sim-controls button {
+        width: 100%;
+    }
+}
+
 @media (max-width: 768px) {
     body {
-        padding: 14px 12px;
+        padding: 14px max(12px, env(safe-area-inset-right)) max(40px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
     }
 
     .card {
         padding: 16px 14px;
+        margin-bottom: 18px;
     }
 
     .row {
@@ -721,8 +791,12 @@ table td input.whatif-input {
     }
 
     .col {
-        flex: 1 1 140px;
-        min-width: 100px;
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+
+    .brand {
+        width: 100%;
     }
 
     .brand-logo {
@@ -733,28 +807,132 @@ table td input.whatif-input {
         font-size: 14px;
     }
 
+    .header-wrap {
+        gap: 10px;
+    }
+
+    .header-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .header-actions #logoutBtn {
+        width: 100%;
+        min-height: 44px;
+    }
+
+    .tabs {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        gap: 6px;
+        margin-bottom: 14px;
+        padding-bottom: 6px;
+        scroll-snap-type: x proximity;
+    }
+
+    .tabs::-webkit-scrollbar {
+        display: none;
+    }
+
+    .tab-btn {
+        flex: 0 0 auto;
+        white-space: nowrap;
+        padding: 10px 16px;
+        font-size: 13px;
+        min-height: 44px;
+        scroll-snap-align: start;
+    }
+
+    .section-title {
+        font-size: 16px;
+        padding-left: 12px;
+        margin: 20px 0 12px;
+    }
+
+    .section-title .section-sub {
+        display: block;
+        margin-top: 4px;
+        font-size: 12.5px;
+    }
+
     .balance-grid {
         grid-template-columns: 1fr 1fr;
+        gap: 10px 12px;
+    }
+
+    .balance-item {
+        padding: 12px 14px;
+    }
+
+    .balance-item .value {
+        font-size: 17px;
+        word-break: break-word;
     }
 
     .sim-grid {
         grid-template-columns: 1fr;
     }
 
+    .sim-subhead {
+        max-width: none;
+        font-size: 12.5px;
+    }
+
+    .table-wrap::before {
+        content: "Desliza horizontalmente para ver más columnas";
+        display: block;
+        font-size: 11px;
+        color: var(--text-faint);
+        text-align: right;
+        margin-bottom: 6px;
+        padding-right: 2px;
+    }
+
     table {
         font-size: 12px;
-        min-width: 700px;
+        min-width: 680px;
+    }
+
+    table.sim-table-wide {
+        min-width: 1200px;
     }
 
     table th,
     table td {
-        padding: 5px 4px;
+        padding: 6px 5px;
+    }
+
+    table td button.mini-btn {
+        min-height: 40px;
+        padding: 8px 10px;
+        font-size: 11px;
     }
 
     input[type="number"],
     input[type="text"],
-    input[type="password"] {
+    input[type="password"],
+    select {
+        font-size: 16px;
+        min-height: 44px;
+        padding: 10px 12px;
+    }
+
+    input[type="number"] {
         max-width: 100%;
+    }
+
+    table td input[type="text"],
+    table td input[type="number"] {
+        min-height: 40px;
+        font-size: 14px;
+    }
+
+    .semaforo {
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px 14px;
     }
 
     .semaforo-status {
@@ -762,11 +940,51 @@ table td input.whatif-input {
         width: 100%;
     }
 
+    .note-tramo {
+        font-size: 11.5px;
+        padding: 10px 12px;
+    }
+
+    .tier-display {
+        gap: 6px 10px;
+    }
+
+    button:not(.secondary-btn):not(.mini-btn):not(.tab-btn):not(#logoutBtn),
+    button.secondary-btn {
+        min-height: 44px;
+        padding-top: 11px;
+        padding-bottom: 11px;
+    }
+
     body::before,
     body::after {
-        width: 380px;
-        height: 380px;
+        width: 320px;
+        height: 320px;
         filter: blur(70px);
+        opacity: 0.28;
+    }
+
+    .login-screen {
+        padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+        min-height: 100dvh;
+    }
+
+    .login-card {
+        padding: 28px 20px;
+        border-radius: 22px;
+    }
+
+    .login-brand img {
+        height: 48px;
+    }
+
+    .app-dialog {
+        width: calc(100% - 24px);
+        max-height: calc(100dvh - 32px);
+    }
+
+    .app-dialog form {
+        padding: 20px 18px;
     }
 }
 
@@ -778,6 +996,49 @@ table td input.whatif-input {
     .header-wrap {
         flex-direction: column;
         align-items: flex-start;
+    }
+
+    .brand-sub {
+        font-size: 13px;
+    }
+
+    .subhead {
+        font-size: 12px;
+        padding: 8px 12px;
+    }
+
+    .tab-btn {
+        padding: 10px 14px;
+        font-size: 12.5px;
+    }
+
+    .footer {
+        font-size: 11px;
+        padding: 16px 0 8px;
+    }
+
+    .dialog-actions {
+        flex-direction: column-reverse;
+        align-items: stretch;
+    }
+
+    .dialog-actions button {
+        width: 100%;
+        min-height: 44px;
+    }
+}
+
+@media (max-width: 360px) {
+    .login-title {
+        font-size: 16px;
+    }
+
+    .card {
+        padding: 14px 12px;
+    }
+
+    table {
+        min-width: 620px;
     }
 }
 
