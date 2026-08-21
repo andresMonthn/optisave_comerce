@@ -1119,8 +1119,24 @@ table td input.whatif-input {
 
 .status-badge.prospecto { background: rgba(24, 38, 74, 0.08); color: var(--text-secondary); }
 .status-badge.vendido { background: rgba(47, 107, 216, 0.14); color: var(--blue); }
+.status-badge.pendiente { background: rgba(201, 122, 16, 0.16); color: var(--amber); }
 .status-badge.activo { background: rgba(15, 157, 99, 0.15); color: var(--green); }
 .status-badge.cancelado { background: rgba(217, 64, 84, 0.13); color: var(--rose); }
+
+.info-callout {
+    font-size: 13px;
+    color: var(--text-secondary);
+    background: var(--glass-tint);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    line-height: 1.45;
+}
+
+.info-callout.payment-notice {
+    background: rgba(47, 107, 216, 0.1);
+    color: var(--text-primary);
+    margin: 12px 0 14px;
+}
 
 table td button.mini-btn {
     background: var(--glass-fill-strong);
@@ -1263,6 +1279,12 @@ table td button.mini-btn:hover {
 
 .dialog-field input,
 .dialog-field select {
+    width: 100%;
+    max-width: 100%;
+}
+
+.dialog-field input[type="date"],
+.dialog-field input[type="time"] {
     width: 100%;
     max-width: 100%;
 }

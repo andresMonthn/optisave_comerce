@@ -138,6 +138,29 @@
                         </table>
                     </div>
                 </div>
+
+                <div class="card">
+                    <div class="section-title">Solicitudes pendientes de aprobación</div>
+                    <div class="sim-subhead">
+                        Los agentes solicitan cambio a <strong>vendido</strong> o <strong>activo</strong> con la fecha de adquisición de licencia.
+                        Confírmalo aquí según la corroboración administrativa.
+                    </div>
+                    <div class="table-wrap" style="margin-top:14px;">
+                        <table id="pendientesTable">
+                            <thead>
+                                <tr>
+                                    <th>Clínica</th>
+                                    <th>Agente</th>
+                                    <th>Solicita</th>
+                                    <th>Fecha licencia</th>
+                                    <th>Demo</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pendientesBody"></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
 
             <!-- DIALOG: Agregar agente de venta (crea Vendedor + Usuario) -->
@@ -321,16 +344,20 @@
 
             <div class="tabs" id="vendedorTabs">
                 <button class="tab-btn active" data-tab="misClientes">Mis clientes</button>
-                <button class="tab-btn" data-tab="miBalance">Mi cierre de mes</button>
-                <button class="tab-btn" data-tab="miSimulador">Mi cartera real</button>
+                <button class="tab-btn" data-tab="miSimulador">Cartera real</button>
             </div>
 
-            <!-- TAB: MIS CLIENTES (alta y cambio de estado vía diálogo — nunca se elimina) -->
+            <!-- TAB: MIS CLIENTES -->
             <div class="tab-panel active" data-tab-panel="misClientes">
                 <div class="card">
                     <div class="row" style="justify-content:space-between;align-items:center;">
                         <div class="section-title" style="margin:0;">Mis clientes</div>
                         <button id="openAddClienteDialogBtn">Agregar cliente</button>
+                    </div>
+
+                    <div class="info-callout" style="margin-top:14px;">
+                        Los estados <strong>vendido</strong> y <strong>activo</strong> deben ser corroborados por el administrador
+                        según la fecha en que el doctor adquirió su licencia. Agenda la demo y solicita el cambio cuando corresponda.
                     </div>
 
                     <div class="row gap-sm" style="margin:14px 0 10px 0;">
@@ -339,6 +366,7 @@
                             <select id="filtroEstadoCartera">
                                 <option value="">Todos</option>
                                 <option value="prospecto">Prospecto</option>
+                                <option value="pendiente">Pendiente de aprobación</option>
                                 <option value="vendido">Vendido</option>
                                 <option value="activo">Activo</option>
                                 <option value="cancelado">Cancelado</option>
@@ -353,15 +381,15 @@
                                     <th>Contacto</th>
                                     <th>Especialidad</th>
                                     <th>Tipo</th>
+                                    <th>Demo agendada</th>
                                     <th>Estado</th>
-                                    <th>Último seguimiento</th>
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
                             <tbody id="misClientesBody"></tbody>
                         </table>
                     </div>
-                    <div class="text-muted" style="margin-top:8px;">Los clientes nunca se eliminan — solo cambian de estado.</div>
+                    <div class="text-muted" style="margin-top:8px;">Los clientes nunca se eliminan. Nuevos registros inician como prospecto.</div>
                 </div>
             </div>
 
@@ -389,14 +417,14 @@
                         </select>
                     </div>
                     <div class="dialog-field">
-                        <span class="label">Estado</span>
-                        <select id="newClienteEstado">
-                            <option value="prospecto">Prospecto</option>
-                            <option value="vendido">Vendido</option>
-                            <option value="activo">Activo</option>
-                            <option value="cancelado">Cancelado</option>
-                        </select>
+                        <span class="label">Demo — fecha</span>
+                        <input type="date" id="newClienteDemoFecha" />
                     </div>
+                    <div class="dialog-field">
+                        <span class="label">Demo — hora</span>
+                        <input type="time" id="newClienteDemoHora" />
+                    </div>
+                    <div class="text-muted" style="margin-bottom:8px;">El cliente se registra como <strong>prospecto</strong>. Vendido y activo los confirma el administrador.</div>
                     <div class="text-muted" id="clienteAddStatus" style="margin:6px 0;"></div>
                     <div class="dialog-actions">
                         <button type="button" id="cancelAddClienteBtn" class="secondary-btn">Cancelar</button>
@@ -405,19 +433,33 @@
                 </form>
             </dialog>
 
-            <!-- DIALOG: Cambiar estado -->
+            <!-- DIALOG: Gestionar cliente (demo + solicitud de estado) -->
             <dialog id="estadoDialog" class="app-dialog">
                 <form method="dialog" id="estadoForm">
-                    <h3>Cambiar estado</h3>
+                    <h3>Gestionar cliente</h3>
                     <p class="text-muted" id="estadoDialogClienteNombre"></p>
                     <div class="dialog-field">
-                        <span class="label">Nuevo estado</span>
+                        <span class="label">Demo — fecha</span>
+                        <input type="date" id="estadoDialogDemoFecha" />
+                    </div>
+                    <div class="dialog-field">
+                        <span class="label">Demo — hora</span>
+                        <input type="time" id="estadoDialogDemoHora" />
+                    </div>
+                    <div class="dialog-field">
+                        <span class="label">Solicitar cambio a</span>
                         <select id="estadoDialogSelect">
-                            <option value="prospecto">Prospecto</option>
-                            <option value="vendido">Vendido</option>
-                            <option value="activo">Activo</option>
-                            <option value="cancelado">Cancelado</option>
+                            <option value="">Sin solicitud (solo prospecto)</option>
+                            <option value="vendido">Vendido (pendiente admin)</option>
+                            <option value="activo">Activo (pendiente admin)</option>
                         </select>
+                    </div>
+                    <div class="dialog-field">
+                        <span class="label">Fecha adquisición licencia</span>
+                        <input type="date" id="estadoDialogFechaLicencia" />
+                        <span class="hint" style="display:block;margin-top:4px;font-size:11.5px;color:var(--text-faint);">
+                            Obligatoria al solicitar vendido o activo. El administrador la corroborará antes de confirmar.
+                        </span>
                     </div>
                     <div class="text-muted" id="estadoDialogStatus" style="margin:6px 0;"></div>
                     <div class="dialog-actions">
@@ -427,38 +469,17 @@
                 </form>
             </dialog>
 
-            <!-- TAB: MI BALANCE (solo su comisión, no la utilidad de la empresa) -->
-            <div class="tab-panel" data-tab-panel="miBalance">
-                <div class="card">
-                    <div class="section-title">Cierre de mes — lo que me corresponde</div>
-                    <div class="row gap-sm" style="margin-bottom:12px;align-items:flex-end;">
-                        <div class="col" style="flex:0 0 160px;">
-                            <span class="label">Periodo</span>
-                            <input type="text" id="vPeriodoInput" class="period" placeholder="2026-08" />
-                        </div>
-                    </div>
-                    <div class="text-muted" id="vDeclaracionStatus" style="margin-bottom:10px;"></div>
-                    <div class="balance-grid" id="miBalanceGrid">
-                        <div class="balance-item"><span class="label">Doctores nuevos</span><span class="value blue" id="vNewDoctors">0</span></div>
-                        <div class="balance-item"><span class="label">Desktop vendidas</span><span class="value blue" id="vDesktopSold">0</span></div>
-                        <div class="balance-item"><span class="label">Doctores activos</span><span class="value blue" id="vActiveDoctors">0</span></div>
-                        <div class="balance-item"><span class="label">Tramo de comisión alcanzado</span><span class="value" id="vCommRate">—</span></div>
-                        <div class="balance-item"><span class="label">Comisión por Doctor</span><span class="value green" id="vCommDoctor">$0</span></div>
-                        <div class="balance-item"><span class="label">Comisión por Desktop</span><span class="value green" id="vCommDesktop">$0</span></div>
-                        <div class="balance-item"><span class="label">Bono trimestral</span><span class="value green" id="vBono">$0</span></div>
-                        <div class="balance-item"><span class="label">Total a recibir</span><span class="value green" id="vTotal" style="font-size:22px;">$0</span></div>
-                    </div>
-                    <div class="text-muted" style="margin-top:10px;">Este panel solo muestra tu comisión y bono — no la utilidad ni el ingreso de OptiSave.</div>
-                </div>
-            </div>
-
-            <!-- TAB: MI CARTERA REAL (proyección con clientes registrados) -->
+            <!-- TAB: CARTERA REAL -->
             <div class="tab-panel" data-tab-panel="miSimulador">
                 <div class="card">
-                    <div class="section-title">Mi cartera — proyección con datos reales</div>
+                    <div class="section-title">Cartera real</div>
+                    <div class="info-callout payment-notice">
+                        <strong>Cortes de pago:</strong> el corte comercial se calcula el día <strong>1</strong> de cada mes
+                        y el pago se recibe el día <strong>5</strong>.
+                    </div>
                     <div class="sim-subhead">
-                        Comisiones y bono calculados con tus clientes registrados y la configuración vigente en la BD.
-                        No son escenarios hipotéticos.
+                        Comisiones y bono con tus clientes registrados y la configuración vigente en la BD.
+                        Solo cuentan clientes con estado confirmado por el administrador.
                     </div>
                     <div class="row gap-sm" style="margin-bottom:12px;align-items:flex-end;">
                         <div class="col" style="flex:0 0 160px;">
@@ -485,15 +506,17 @@
                                     <th>Clínica</th>
                                     <th>Contacto</th>
                                     <th>Tipo</th>
+                                    <th>Demo</th>
                                     <th>Estado</th>
-                                    <th>Último seguimiento</th>
+                                    <th>Fecha licencia</th>
                                 </tr>
                             </thead>
                             <tbody id="vSimClientesBody"></tbody>
                         </table>
                     </div>
                     <div class="text-muted" style="margin-top:8px;">
-                        Los totales se actualizan al agregar clientes o cambiar su estado. El bono trimestral aplica en periodos marzo, junio, septiembre y diciembre.
+                        El bono trimestral aplica en periodos marzo, junio, septiembre y diciembre.
+                        Los montos del periodo seleccionado reflejan el corte del día 1 y pago estimado el día 5.
                     </div>
                 </div>
             </div>

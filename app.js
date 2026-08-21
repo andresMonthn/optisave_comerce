@@ -17,8 +17,10 @@ const API_BASE_URL = (() => {
 //   GET   /vendedores
 //   GET   /vendedores/:id/cartera?estado=
 //   GET   /vendedores/:id/declaraciones?periodo=
-//   POST  /clientes { vendedorId, nombreClinica, contacto, especialidad, tipoLicencia, estado }
-//   PATCH /clientes/:id { estado }
+//   POST  /clientes { vendedorId, nombreClinica, ..., demoAgendada }
+//   PATCH /clientes/:id { demoAgendada, estadoSolicitado, fechaAdquisicionLicencia }
+//   GET   /clientes/pendientes-aprobacion  (admin)
+//   PATCH /clientes/:id { aprobarSolicitud | rechazarSolicitud }  (admin)
 //
 // TODAVÍA NO EXISTE — lo necesitas para que el login funcione de verdad:
 //   POST /auth/login { usuario, clave }
@@ -57,6 +59,7 @@ const state = {
     config: null,
     vendedores: [],
     carteraPorVendedor: {},
+    pendientes: [],
     vendedorActualId: null, // para 'agente', su propio vendedorId (viene del login)
     whatif: {
         months: [], // [{ web, desktop, cancelaciones }, ...] índice 0 = mes 1
@@ -123,10 +126,62 @@ function fmtDec(v) {
     return (v * 100).toFixed(1) + '%';
 }
 function escapeHtml(str) {
-    return String(str ?? '')
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    if (str == null) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 }
+
+function formatContacto(cliente) {
+    const c = cliente?.contacto;
+    if (!c) return '—';
+    if (typeof c === 'string') return c;
+    return c.nombre || c.email || c.telefono || '—';
+}
+
+function toInputDate(value) {
+    if (!value) return '';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+function toInputTime(value) {
+    if (!value) return '';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '';
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function buildDemoAgendadaISO(fecha, hora) {
+    if (!fecha) return null;
+    const dt = `${fecha}T${hora || '09:00'}`;
+    const d = new Date(dt);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function formatDemoAgendada(value) {
+    if (!value) return '—';
+    return new Date(value).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function formatFecha(value) {
+    if (!value) return '—';
+    return new Date(value).toLocaleDateString('es-MX');
+}
+
+function renderEstadoClienteCell(cliente) {
+    if (cliente.estadoSolicitado) {
+        return `<span class="status-badge pendiente">Pendiente: ${escapeHtml(cliente.estadoSolicitado)}</span>`;
+    }
+    return `<span class="status-badge ${escapeHtml(cliente.estado)}">${escapeHtml(cliente.estado)}</span>`;
+}
+
 function currentPeriodo() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -242,12 +297,13 @@ async function afterLogin() {
             }
             await loadCartera(state.vendedorActualId);
             renderMisClientes();
-            await recalcMiBalance();
             await renderAgentCarteraReal();
         } else {
             await loadVendedores();
             await loadTodasLasCarteras();
+            await loadPendientesAprobacion();
             renderVendedoresTable();
+            renderPendientesTable();
             await recalcResumenGeneral();
             setupWhatifSimulator();
         }
@@ -291,7 +347,6 @@ function refreshCalculationsFromConfig() {
         renderWhatifTable();
         if (state.vendedores.length) recalcResumenGeneral();
     } else if (state.vendedorActualId) {
-        recalcMiBalance();
         renderAgentCarteraReal();
     }
 }
@@ -484,7 +539,9 @@ async function addCliente() {
     const contacto = document.getElementById('newClienteContacto').value.trim();
     const especialidad = document.getElementById('newClienteEspecialidad').value.trim();
     const tipoLicencia = document.getElementById('newClienteTipo').value;
-    const estado = document.getElementById('newClienteEstado').value;
+    const demoFecha = document.getElementById('newClienteDemoFecha').value;
+    const demoHora = document.getElementById('newClienteDemoHora').value;
+    const demoAgendada = buildDemoAgendadaISO(demoFecha, demoHora);
     const statusEl = document.getElementById('clienteAddStatus');
 
     if (!nombreClinica) {
@@ -492,19 +549,28 @@ async function addCliente() {
         return false;
     }
     try {
+        const payload = {
+            vendedorId: state.vendedorActualId,
+            nombreClinica,
+            contacto: contacto ? { nombre: contacto } : undefined,
+            especialidad,
+            tipoLicencia,
+            estado: 'prospecto',
+        };
+        if (demoAgendada) payload.demoAgendada = demoAgendada;
+
         const res = await authFetch('/clientes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ vendedorId: state.vendedorActualId, nombreClinica, contacto, especialidad, tipoLicencia, estado }),
+            body: JSON.stringify(payload),
         });
         if (!res.ok) {
             const errBody = await res.json().catch(() => ({}));
             throw new Error(errBody.error || `HTTP ${res.status}`);
         }
-        setStatus(statusEl, 'Cliente agregado.', 'ok');
+        setStatus(statusEl, 'Cliente agregado como prospecto.', 'ok');
         await loadCartera(state.vendedorActualId);
         renderMisClientes();
-        await recalcMiBalance();
         await renderAgentCarteraReal();
         return true;
     } catch (err) {
@@ -514,24 +580,92 @@ async function addCliente() {
     }
 }
 
-async function updateClienteEstado(clienteId, nuevoEstado) {
+async function updateClienteGestion(clienteId, body) {
     const statusEl = document.getElementById('estadoDialogStatus');
     try {
         const res = await authFetch(`/clientes/${clienteId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ estado: nuevoEstado }),
+            body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+            const errBody = await res.json().catch(() => ({}));
+            throw new Error(errBody.error || `HTTP ${res.status}`);
+        }
         await loadCartera(state.vendedorActualId);
         renderMisClientes();
-        await recalcMiBalance();
         await renderAgentCarteraReal();
         return true;
     } catch (err) {
-        console.error('Error al actualizar estado del cliente:', err);
-        setStatus(statusEl, 'No se pudo actualizar el estado.', 'error');
+        console.error('Error al actualizar cliente:', err);
+        setStatus(statusEl, err.message || 'No se pudo guardar los cambios.', 'error');
         return false;
+    }
+}
+
+async function loadPendientesAprobacion() {
+    if (state.role !== 'admin') return;
+    try {
+        const res = await authFetch('/clientes/pendientes-aprobacion');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        state.pendientes = await res.json();
+    } catch (err) {
+        console.error('Error al cargar solicitudes pendientes:', err);
+        state.pendientes = [];
+    }
+}
+
+function nombreVendedorDeCliente(vendedorId) {
+    const v = state.vendedores.find(x => String(x._id) === String(vendedorId));
+    return v ? v.nombre : '—';
+}
+
+function renderPendientesTable() {
+    const tbody = document.getElementById('pendientesBody');
+    if (!tbody) return;
+    const pendientes = state.pendientes || [];
+
+    tbody.innerHTML = pendientes.map(c => `
+        <tr>
+            <td>${escapeHtml(c.nombreClinica)}</td>
+            <td>${escapeHtml(nombreVendedorDeCliente(c.vendedorId))}</td>
+            <td><span class="status-badge pendiente">${escapeHtml(c.estadoSolicitado)}</span></td>
+            <td>${formatFecha(c.fechaAdquisicionLicencia)}</td>
+            <td>${formatDemoAgendada(c.demoAgendada)}</td>
+            <td>
+                <button class="mini-btn" data-aprobar="${c._id}">Aprobar</button>
+                <button class="mini-btn" data-rechazar="${c._id}">Rechazar</button>
+            </td>
+        </tr>
+    `).join('') || `<tr><td colspan="6" class="text-muted">No hay solicitudes pendientes.</td></tr>`;
+
+    tbody.querySelectorAll('[data-aprobar]').forEach(btn => {
+        btn.addEventListener('click', () => resolverSolicitudCliente(btn.dataset.aprobar, true));
+    });
+    tbody.querySelectorAll('[data-rechazar]').forEach(btn => {
+        btn.addEventListener('click', () => resolverSolicitudCliente(btn.dataset.rechazar, false));
+    });
+}
+
+async function resolverSolicitudCliente(clienteId, aprobar) {
+    try {
+        const res = await authFetch(`/clientes/${clienteId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(aprobar ? { aprobarSolicitud: true } : { rechazarSolicitud: true }),
+        });
+        if (!res.ok) {
+            const errBody = await res.json().catch(() => ({}));
+            throw new Error(errBody.error || `HTTP ${res.status}`);
+        }
+        await loadPendientesAprobacion();
+        await loadTodasLasCarteras();
+        renderPendientesTable();
+        renderVendedoresTable();
+        await recalcResumenGeneral();
+    } catch (err) {
+        console.error('Error al resolver solicitud:', err);
+        alert(err.message || 'No se pudo procesar la solicitud.');
     }
 }
 
@@ -540,22 +674,23 @@ function renderMisClientes() {
     if (!tbody) return;
     const filtro = document.getElementById('filtroEstadoCartera')?.value || '';
     let mios = state.carteraPorVendedor[state.vendedorActualId] || [];
-    if (filtro) mios = mios.filter(c => c.estado === filtro);
+    if (filtro === 'pendiente') mios = mios.filter(c => c.estadoSolicitado);
+    else if (filtro) mios = mios.filter(c => c.estado === filtro);
 
     tbody.innerHTML = mios.map(c => `
         <tr>
             <td>${escapeHtml(c.nombreClinica)}</td>
-            <td>${escapeHtml(c.contacto || '—')}</td>
+            <td>${escapeHtml(formatContacto(c))}</td>
             <td>${escapeHtml(c.especialidad || '—')}</td>
             <td>${c.tipoLicencia === 'desktop' ? 'Desktop' : 'Doctor'}</td>
-            <td><span class="status-badge ${c.estado}">${c.estado}</span></td>
-            <td>${c.ultimoSeguimiento ? new Date(c.ultimoSeguimiento).toLocaleDateString('es-MX') : '—'}</td>
-            <td><button class="mini-btn" data-open-estado="${c._id}" data-nombre="${escapeHtml(c.nombreClinica)}" data-estado="${c.estado}">Cambiar estado</button></td>
+            <td>${formatDemoAgendada(c.demoAgendada)}</td>
+            <td>${renderEstadoClienteCell(c)}</td>
+            <td><button class="mini-btn" data-open-estado="${c._id}">Gestionar</button></td>
         </tr>
     `).join('') || `<tr><td colspan="7" class="text-muted">Aún no has registrado clientes.</td></tr>`;
 
     tbody.querySelectorAll('[data-open-estado]').forEach(btn => {
-        btn.addEventListener('click', () => openEstadoDialog(btn.dataset.openEstado, btn.dataset.nombre, btn.dataset.estado));
+        btn.addEventListener('click', () => openEstadoDialog(btn.dataset.openEstado));
     });
 }
 
@@ -569,7 +704,8 @@ function setupDialogs() {
         document.getElementById('newClienteContacto').value = '';
         document.getElementById('newClienteEspecialidad').value = '';
         document.getElementById('newClienteTipo').value = 'doctor';
-        document.getElementById('newClienteEstado').value = 'prospecto';
+        document.getElementById('newClienteDemoFecha').value = '';
+        document.getElementById('newClienteDemoHora').value = '';
         document.getElementById('clienteAddStatus').textContent = '';
         addDialog.showModal();
     });
@@ -583,8 +719,28 @@ function setupDialogs() {
     document.getElementById('cancelEstadoBtn').addEventListener('click', () => estadoDialog.close());
     document.getElementById('saveEstadoBtn').addEventListener('click', async () => {
         const clienteId = estadoDialog.dataset.clienteId;
-        const nuevoEstado = document.getElementById('estadoDialogSelect').value;
-        const ok = await updateClienteEstado(clienteId, nuevoEstado);
+        const demoFecha = document.getElementById('estadoDialogDemoFecha').value;
+        const demoHora = document.getElementById('estadoDialogDemoHora').value;
+        const solicitud = document.getElementById('estadoDialogSelect').value;
+        const fechaLicencia = document.getElementById('estadoDialogFechaLicencia').value;
+
+        const body = {
+            demoAgendada: buildDemoAgendadaISO(demoFecha, demoHora),
+        };
+
+        if (solicitud) {
+            if (!fechaLicencia) {
+                setStatus(document.getElementById('estadoDialogStatus'),
+                    'Indica la fecha de adquisición de la licencia.', 'error');
+                return;
+            }
+            body.estadoSolicitado = solicitud;
+            body.fechaAdquisicionLicencia = fechaLicencia;
+        } else if (estadoDialog.dataset.initialSolicitud) {
+            body.estadoSolicitado = null;
+        }
+
+        const ok = await updateClienteGestion(clienteId, body);
         if (ok) estadoDialog.close();
     });
 
@@ -611,11 +767,21 @@ function setupDialogs() {
     });
 }
 
-function openEstadoDialog(clienteId, nombre, estadoActual) {
+function openEstadoDialog(clienteId) {
     const dialog = document.getElementById('estadoDialog');
+    const cartera = state.carteraPorVendedor[state.vendedorActualId] || [];
+    const cliente = cartera.find(c => String(c._id) === String(clienteId));
+    if (!cliente) return;
+
     dialog.dataset.clienteId = clienteId;
-    document.getElementById('estadoDialogClienteNombre').textContent = nombre;
-    document.getElementById('estadoDialogSelect').value = estadoActual;
+    dialog.dataset.initialSolicitud = cliente.estadoSolicitado || '';
+    document.getElementById('estadoDialogClienteNombre').textContent = cliente.nombreClinica;
+    document.getElementById('estadoDialogDemoFecha').value = toInputDate(cliente.demoAgendada);
+    document.getElementById('estadoDialogDemoHora').value = toInputTime(cliente.demoAgendada);
+    document.getElementById('estadoDialogSelect').value = cliente.estadoSolicitado || '';
+    document.getElementById('estadoDialogFechaLicencia').value = toInputDate(
+        cliente.fechaAdquisicionLicencia || cliente.fechaVenta
+    );
     document.getElementById('estadoDialogStatus').textContent = '';
     dialog.showModal();
 }
@@ -671,40 +837,12 @@ async function getVendedorTotals(vendedorId, periodo) {
     return estimateFromCartera(vendedorId, periodo);
 }
 
-// ===================================================================
-//  TAB "MI CIERRE DE MES" (agente)
-// ===================================================================
-async function recalcMiBalance() {
-    if (!state.config || !state.vendedorActualId) return;
-    const periodoInput = document.getElementById('vPeriodoInput');
-    if (!periodoInput.value) periodoInput.value = currentPeriodo();
-    const periodo = periodoInput.value;
-
-    const t = await getVendedorTotals(state.vendedorActualId, periodo);
-
-    document.getElementById('vNewDoctors').textContent = t.newDoctors;
-    document.getElementById('vDesktopSold').textContent = t.desktopSold;
-    document.getElementById('vActiveDoctors').textContent = t.activeDoctors;
-    document.getElementById('vCommRate').textContent = t.commRate > 0 ? (Number(t.commRate) <= 1 ? (t.commRate * 100).toFixed(0) + '%' : t.commRate + '%') : '—';
-    document.getElementById('vCommDoctor').textContent = fmt(t.commDoctor);
-    document.getElementById('vCommDesktop').textContent = fmt(t.commDesktop);
-    document.getElementById('vBono').textContent = fmt(t.bonus);
-    document.getElementById('vTotal').textContent = fmt(t.total);
-
-    const declEl = document.getElementById('vDeclaracionStatus');
-    setStatus(declEl,
-        t.esEstimado
-            ? `Aún no se genera la declaración oficial de ${periodo} — esto es una estimación en vivo con tu cartera actual.`
-            : `Declaración oficial de ${periodo}.`,
-        t.esEstimado ? 'warn' : 'ok');
-}
-
 async function renderAgentCarteraReal() {
     if (!state.config || !state.vendedorActualId) return;
 
     const periodoInput = document.getElementById('vSimPeriodoInput');
     if (!periodoInput) return;
-    if (!periodoInput.value) periodoInput.value = document.getElementById('vPeriodoInput')?.value || currentPeriodo();
+    if (!periodoInput.value) periodoInput.value = currentPeriodo();
 
     const periodo = periodoInput.value;
     if (!state.carteraPorVendedor[state.vendedorActualId]) {
@@ -728,10 +866,14 @@ async function renderAgentCarteraReal() {
     set('vSimTotal', fmt(t.total));
 
     const statusEl = document.getElementById('vSimRealStatus');
+    const pendientes = cartera.filter(c => c.estadoSolicitado).length;
+    const msgBase = t.esEstimado
+        ? `Proyección con ${cartera.length} cliente(s) — periodo ${periodo}. Corte día 1 · pago día 5.`
+        : `Declaración oficial de ${periodo}. Pago correspondiente al día 5.`;
     setStatus(statusEl,
-        t.esEstimado
-            ? `Proyección en vivo con ${cartera.length} cliente(s) registrados — periodo ${periodo}.`
-            : `Declaración oficial del periodo ${periodo} con ${cartera.length} cliente(s) en cartera.`,
+        pendientes
+            ? `${msgBase} Tienes ${pendientes} solicitud(es) pendientes de aprobación del administrador.`
+            : msgBase,
         t.esEstimado ? 'warn' : 'ok');
 
     const tbody = document.getElementById('vSimClientesBody');
@@ -740,12 +882,13 @@ async function renderAgentCarteraReal() {
     tbody.innerHTML = cartera.map(c => `
         <tr>
             <td>${escapeHtml(c.nombreClinica)}</td>
-            <td>${escapeHtml(c.contacto || '—')}</td>
+            <td>${escapeHtml(formatContacto(c))}</td>
             <td>${c.tipoLicencia === 'desktop' ? 'Desktop' : 'Web'}</td>
-            <td><span class="status-badge ${c.estado}">${c.estado}</span></td>
-            <td>${c.ultimoSeguimiento ? new Date(c.ultimoSeguimiento).toLocaleDateString('es-MX') : '—'}</td>
+            <td>${formatDemoAgendada(c.demoAgendada)}</td>
+            <td>${renderEstadoClienteCell(c)}</td>
+            <td>${formatFecha(c.fechaVenta || c.fechaAdquisicionLicencia)}</td>
         </tr>
-    `).join('') || `<tr><td colspan="5" class="text-muted">Aún no tienes clientes registrados. Agrega clientes en la pestaña «Mis clientes».</td></tr>`;
+    `).join('') || `<tr><td colspan="6" class="text-muted">Aún no tienes clientes registrados. Agrega clientes en la pestaña «Mis clientes».</td></tr>`;
 }
 
 // ===================================================================
@@ -1075,13 +1218,14 @@ document.addEventListener('DOMContentLoaded', async function () {
     document.getElementById('loginClave').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
     document.getElementById('logoutBtn').addEventListener('click', doLogout);
     document.getElementById('filtroEstadoCartera').addEventListener('change', renderMisClientes);
-    document.getElementById('vPeriodoInput').addEventListener('change', recalcMiBalance);
     document.getElementById('vSimPeriodoInput')?.addEventListener('change', renderAgentCarteraReal);
     document.getElementById('resumenPeriodoInput').addEventListener('change', recalcResumenGeneral);
     document.getElementById('refreshVendedoresBtn').addEventListener('click', async () => {
         await loadVendedores();
         await loadTodasLasCarteras();
+        await loadPendientesAprobacion();
         renderVendedoresTable();
+        renderPendientesTable();
         await recalcResumenGeneral();
     });
     document.getElementById('refreshConfigBtn')?.addEventListener('click', refreshConfigComercial);

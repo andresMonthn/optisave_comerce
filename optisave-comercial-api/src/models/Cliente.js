@@ -22,9 +22,19 @@ const clienteSchema = new Schema(
     },
     estado: {
       type: String,
-      enum: ['prospecto', 'activo', 'inactivo', 'cancelado'],
+      enum: ['prospecto', 'vendido', 'activo', 'inactivo', 'cancelado'],
       default: 'prospecto',
       index: true,
+    },
+    /** Fecha y hora de la demo agendada con el prospecto */
+    demoAgendada: { type: Date },
+    /** Fecha en que el doctor adquirió la licencia (la reporta el agente; la confirma admin) */
+    fechaAdquisicionLicencia: { type: Date },
+    /** Cambio a vendido/activo solicitado por el agente — pendiente de aprobación admin */
+    estadoSolicitado: {
+      type: String,
+      enum: ['vendido', 'activo'],
+      default: null,
     },
     fechaVenta: { type: Date },
     fechaAlta: { type: Date, default: Date.now },
