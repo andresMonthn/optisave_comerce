@@ -25,6 +25,7 @@ async function buildApp(opts = {}) {
   await app.register(vendedoresRoutes);
   await app.register(clientesRoutes);
   await app.register(require('./routes/auth'));
+  await app.register(require('./routes/denue'));
 
   app.get('/health', async () => ({ status: 'ok' }));
 

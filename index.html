@@ -63,6 +63,7 @@
                 <button class="tab-btn" data-tab="vendedores">Vendedores</button>
                 <button class="tab-btn" data-tab="resumen">Resumen general</button>
                 <button class="tab-btn" data-tab="simulador">Simulador</button>
+                <button class="tab-btn" data-tab="prospectos">Prospectos DENUE</button>
             </div>
 
             <!-- TAB: CONFIGURACIÓN (precios/IVA, tramos de comisión, bono) -->
@@ -332,6 +333,64 @@
                         <strong>Comisión Web</strong> = ventas Web del mes × tramo. <strong>Comisión Desktop</strong> = comisión fija × ventas Desktop del mes.
                         <strong>Comisión vendedor + bono</strong> = comisión Web + comisión Desktop + bono trimestral (meses 3, 6, 9…).
                         Los tramos no son marginales. Precios y tramos se recalculan al recargar la configuración.
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: PROSPECTOS DENUE (solo admin) -->
+            <div class="tab-panel" data-tab-panel="prospectos" id="panelProspectos">
+                <div class="card">
+                    <div class="section-title">Levantamiento de prospectos <span class="section-sub">— DENUE · INEGI</span></div>
+                    <div class="sim-subhead">
+                        Consulta el Directorio Estadístico Nacional de Unidades Económicas por actividad y ubicación.
+                        Exporta los resultados a CSV para tu equipo comercial.
+                    </div>
+
+                    <div class="sim-controls denue-controls">
+                        <div class="col denue-field-full">
+                            <span class="label">Token API DENUE (INEGI)</span>
+                            <input type="password" id="denueToken" placeholder="Pega tu token INEGI" autocomplete="off" />
+                            <span class="text-muted denue-hint">
+                                Genéralo gratis en
+                                <a href="https://www.inegi.org.mx/app/api/denue/v1/tokenVerify.aspx" target="_blank" rel="noopener noreferrer">inegi.org.mx · token DENUE</a>.
+                                Se guarda solo en este navegador (localStorage).
+                            </span>
+                        </div>
+                        <div class="col">
+                            <span class="label">Actividad o palabra clave</span>
+                            <input type="text" id="denueActividad" value="consultorios de optometria" placeholder="ej. consultorios dentales" />
+                        </div>
+                        <div class="col">
+                            <span class="label">Entidad (código INEGI)</span>
+                            <select id="denueEntidad">
+                                <option value="22" selected>22 · Querétaro</option>
+                                <option value="01">01 · Aguascalientes</option>
+                                <option value="09">09 · Ciudad de México</option>
+                                <option value="14">14 · Jalisco</option>
+                                <option value="19">19 · Nuevo León</option>
+                                <option value="00">00 · Todo el país</option>
+                            </select>
+                        </div>
+                        <div class="col">
+                            <span class="label">Registros (máx. 1000)</span>
+                            <input type="number" id="denueRegistros" value="200" min="1" max="1000" />
+                        </div>
+                    </div>
+
+                    <div class="row gap-sm" style="margin-top:4px;align-items:center;">
+                        <button type="button" id="denueBuscarBtn">Buscar prospectos</button>
+                        <button type="button" id="denueCsvBtn" class="secondary-btn" disabled>Exportar CSV</button>
+                        <span class="text-muted" id="denueStatus"></span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <div class="section-title" style="margin:0;">Resultados</div>
+                        <span class="text-muted" id="denueCount"></span>
+                    </div>
+                    <div id="denueResultsArea">
+                        <div class="denue-empty">Configura tu token y busca una actividad para ver prospectos.</div>
                     </div>
                 </div>
             </div>

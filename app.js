@@ -64,7 +64,10 @@ const state = {
     whatif: {
         months: [], // [{ web, desktop, cancelaciones }, ...] índice 0 = mes 1
     },
+    denueResults: [],
 };
+
+const DENUE_TOKEN_KEY = 'optisave_denue_token';
 
 // Aplica un estado visual (ok / warn / error) a un elemento de texto sin
 // pisar los colores del tema con estilos en línea.
@@ -306,6 +309,7 @@ async function afterLogin() {
             renderPendientesTable();
             await recalcResumenGeneral();
             setupWhatifSimulator();
+            setupProspectosDenue();
         }
     } catch (err) {
         // el error ya se muestra en el subhead
@@ -1189,6 +1193,167 @@ function renderWhatifTable() {
 }
 
 // ===================================================================
+//  PROSPECTOS DENUE (admin)
+// ===================================================================
+let prospectosDenueBound = false;
+
+function loadDenueTokenFromStorage() {
+    const input = document.getElementById('denueToken');
+    if (!input) return;
+    try {
+        input.value = localStorage.getItem(DENUE_TOKEN_KEY) || '';
+    } catch {
+        input.value = '';
+    }
+}
+
+function saveDenueTokenToStorage() {
+    const input = document.getElementById('denueToken');
+    if (!input) return;
+    try {
+        const val = input.value.trim();
+        if (val) localStorage.setItem(DENUE_TOKEN_KEY, val);
+        else localStorage.removeItem(DENUE_TOKEN_KEY);
+    } catch { /* ignore */ }
+}
+
+function setDenueStatus(msg, kind) {
+    setStatus(document.getElementById('denueStatus'), msg, kind);
+}
+
+function renderDenueTable(data) {
+    const area = document.getElementById('denueResultsArea');
+    if (!area) return;
+
+    const rows = data.map(d => {
+        const tel = (d.Telefono || '').trim();
+        return `<tr>
+            <td class="denue-name">${escapeHtml(d.Nombre || '')}</td>
+            <td>${escapeHtml(d.Razon_social || '')}</td>
+            <td>${escapeHtml(d.Clase_actividad || '')}</td>
+            <td class="denue-dir">${escapeHtml(d.Ubicacion || '')}</td>
+            <td class="denue-tel ${tel ? '' : 'empty'}">${tel ? escapeHtml(tel) : 'sin dato'}</td>
+            <td>${escapeHtml(d.Municipio || '')}</td>
+        </tr>`;
+    }).join('');
+
+    area.innerHTML = `
+        <div class="table-wrap denue-results-scroll">
+            <table id="denueResultsTable">
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Razón social</th>
+                        <th>Actividad</th>
+                        <th>Dirección</th>
+                        <th>Teléfono</th>
+                        <th>Municipio</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>`;
+}
+
+async function buscarProspectosDenue() {
+    const token = document.getElementById('denueToken')?.value.trim();
+    const actividad = document.getElementById('denueActividad')?.value.trim();
+    const entidad = document.getElementById('denueEntidad')?.value || '22';
+    const registros = document.getElementById('denueRegistros')?.value || '200';
+    const btn = document.getElementById('denueBuscarBtn');
+    const csvBtn = document.getElementById('denueCsvBtn');
+    const countEl = document.getElementById('denueCount');
+    const area = document.getElementById('denueResultsArea');
+
+    saveDenueTokenToStorage();
+
+    if (!token) {
+        setDenueStatus('Falta el token de la API DENUE.', 'error');
+        return;
+    }
+    if (!actividad) {
+        setDenueStatus('Escribe una actividad o palabra clave.', 'error');
+        return;
+    }
+
+    if (btn) btn.disabled = true;
+    if (csvBtn) csvBtn.disabled = true;
+    setDenueStatus('Consultando DENUE…', '');
+    if (area) area.innerHTML = '<div class="denue-empty">Cargando resultados…</div>';
+    if (countEl) countEl.textContent = '';
+
+    const qs = new URLSearchParams({ actividad, entidad, registros, token });
+
+    try {
+        const res = await authFetch(`/denue/buscar?${qs.toString()}`);
+        if (!res.ok) {
+            const errBody = await res.json().catch(() => ({}));
+            throw new Error(errBody.error || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+
+        if (!Array.isArray(data) || data.length === 0) {
+            state.denueResults = [];
+            if (area) area.innerHTML = '<div class="denue-empty">Sin resultados. Prueba otra palabra clave o entidad.</div>';
+            setDenueStatus('Búsqueda completada — 0 resultados.', 'ok');
+            return;
+        }
+
+        state.denueResults = data;
+        renderDenueTable(data);
+        if (countEl) countEl.innerHTML = `<strong>${data.length}</strong> unidades económicas`;
+        if (csvBtn) csvBtn.disabled = false;
+        setDenueStatus('Búsqueda completada.', 'ok');
+    } catch (err) {
+        console.error('Error DENUE:', err);
+        state.denueResults = [];
+        if (area) area.innerHTML = '<div class="denue-empty">Error al consultar DENUE. Revisa tu token y la conexión.</div>';
+        setDenueStatus(err.message || 'Error al consultar DENUE.', 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+function exportDenueCsv() {
+    const data = state.denueResults || [];
+    if (!data.length) return;
+
+    const headers = ['Nombre', 'Razon_social', 'Clase_actividad', 'Ubicacion', 'Telefono', 'Municipio', 'Localidad', 'Latitud', 'Longitud'];
+    const csvRows = [headers.join(',')];
+
+    data.forEach(d => {
+        const row = [
+            d.Nombre, d.Razon_social, d.Clase_actividad, d.Ubicacion,
+            d.Telefono, d.Municipio, d.Localidad, d.Latitud, d.Longitud,
+        ].map(v => `"${String(v || '').replace(/"/g, '""')}"`);
+        csvRows.push(row.join(','));
+    });
+
+    const blob = new Blob(['\uFEFF' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `prospectos_denue_${Date.now()}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+}
+
+function setupProspectosDenue() {
+    if (state.role !== 'admin') return;
+    loadDenueTokenFromStorage();
+    if (prospectosDenueBound) return;
+
+    document.getElementById('denueToken')?.addEventListener('change', saveDenueTokenToStorage);
+    document.getElementById('denueToken')?.addEventListener('blur', saveDenueTokenToStorage);
+    document.getElementById('denueBuscarBtn')?.addEventListener('click', buscarProspectosDenue);
+    document.getElementById('denueCsvBtn')?.addEventListener('click', exportDenueCsv);
+    document.getElementById('denueActividad')?.addEventListener('keydown', e => {
+        if (e.key === 'Enter') buscarProspectosDenue();
+    });
+
+    prospectosDenueBound = true;
+}
+
+// ===================================================================
 //  TABS
 // ===================================================================
 function setupTabs(containerId) {
@@ -1213,6 +1378,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     setupTabs('adminTabs');
     setupTabs('vendedorTabs');
     setupDialogs();
+    setupProspectosDenue();
 
     document.getElementById('loginBtn').addEventListener('click', doLogin);
     document.getElementById('loginClave').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });

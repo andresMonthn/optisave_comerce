@@ -1138,6 +1138,81 @@ table td input.whatif-input {
     margin: 12px 0 14px;
 }
 
+.info-callout a {
+    color: var(--blue);
+    font-weight: 600;
+}
+
+/* ===== DENUE / PROSPECTOS ===== */
+.denue-controls input[type="text"],
+.denue-controls input[type="password"],
+.denue-controls input[type="number"],
+.denue-controls select {
+    max-width: 100%;
+    width: 100%;
+}
+
+.denue-field-full {
+    flex: 1 1 100% !important;
+    width: 100%;
+    min-width: 0 !important;
+}
+
+.denue-hint {
+    display: block;
+    margin-top: 6px;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.denue-empty {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.denue-results-scroll {
+    max-height: 520px;
+}
+
+#denueResultsTable {
+    min-width: 860px;
+}
+
+td.denue-name {
+    font-weight: 700;
+    max-width: 220px;
+    text-align: left;
+}
+
+td.denue-dir {
+    color: var(--text-secondary);
+    max-width: 260px;
+    text-align: left;
+}
+
+td.denue-tel {
+    font-weight: 600;
+    color: var(--blue);
+    white-space: nowrap;
+}
+
+td.denue-tel.empty {
+    color: var(--text-faint);
+    font-weight: 400;
+}
+
+table td.denue-name,
+table td.denue-dir {
+    text-align: left;
+}
+
+table thead th:first-child,
+table tbody td:first-child {
+    text-align: left;
+}
+
 table td button.mini-btn {
     background: var(--glass-fill-strong);
     border: none;
