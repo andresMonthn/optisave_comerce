@@ -1221,6 +1221,102 @@ function setDenueStatus(msg, kind) {
     setStatus(document.getElementById('denueStatus'), msg, kind);
 }
 
+function buildDenueInegiUrl(actividad, entidad, registros, token) {
+    const condicion = String(actividad)
+        .trim()
+        .split(/[\s,]+/)
+        .filter(Boolean)
+        .join(',');
+    const ent = String(entidad).trim().padStart(2, '0');
+    const regFin = Math.min(1000, Math.max(1, parseInt(registros, 10) || 200));
+    const tokenClean = String(token).trim();
+    return (
+        `https://www.inegi.org.mx/app/api/denue/v1/consulta/BuscarEntidad/` +
+        `${encodeURIComponent(condicion)}/${ent}/1/${regFin}/${tokenClean}`
+    );
+}
+
+function normalizeDenueRow(row) {
+    if (!row || typeof row !== 'object') return row;
+    return {
+        ...row,
+        Nombre: row.Nombre ?? row.nombre ?? row['Nombre del establecimiento'] ?? '',
+        Razon_social: row.Razon_social ?? row.razon_social ?? row['Razón social'] ?? '',
+        Clase_actividad: row.Clase_actividad ?? row.clase_actividad ?? row['Clase de la actividad'] ?? '',
+        Ubicacion:
+            row.Ubicacion ??
+            row.ubicacion ??
+            row['Localidad, municipio y entidad federativa'] ??
+            '',
+        Telefono: row.Telefono ?? row.telefono ?? row['Teléfono'] ?? '',
+        Municipio: row.Municipio ?? row.municipio ?? '',
+        Localidad: row.Localidad ?? row.localidad ?? '',
+        Latitud: row.Latitud ?? row.latitud ?? '',
+        Longitud: row.Longitud ?? row.longitud ?? '',
+    };
+}
+
+function parseDenueResponseText(text) {
+    if (!text || !String(text).trim()) {
+        throw new Error('INEGI no devolvió datos. Verifica que tu token DENUE sea válido.');
+    }
+    let data;
+    try {
+        data = JSON.parse(text);
+    } catch {
+        throw new Error('INEGI devolvió una respuesta que no es JSON válido.');
+    }
+    if (!Array.isArray(data)) {
+        const msg =
+            data?.mensaje ||
+            data?.Message ||
+            data?.message ||
+            data?.error ||
+            'Token DENUE inválido o consulta rechazada por INEGI.';
+        throw new Error(msg);
+    }
+    return data.map(normalizeDenueRow);
+}
+
+async function fetchDenueDirect(actividad, entidad, registros, token) {
+    const url = buildDenueInegiUrl(actividad, entidad, registros, token);
+    const resp = await fetch(url, { headers: { Accept: 'application/json' } });
+    const text = await resp.text();
+
+    if (resp.status === 0) {
+        return parseDenueResponseText(text);
+    }
+    if (!resp.ok && !text) {
+        throw new Error(`INEGI respondió HTTP ${resp.status || 'desconocido'}.`);
+    }
+    return parseDenueResponseText(text);
+}
+
+async function fetchDenueViaProxy(actividad, entidad, registros, token) {
+    const qs = new URLSearchParams({ actividad, entidad, registros, token });
+    const res = await authFetch(`/denue/buscar?${qs.toString()}`);
+    if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        const detail = errBody.detalle ? ` (${String(errBody.detalle).slice(0, 120)})` : '';
+        throw new Error((errBody.error || `HTTP ${res.status}`) + detail);
+    }
+    return res.json();
+}
+
+async function fetchDenueResults(actividad, entidad, registros, token) {
+    try {
+        return await fetchDenueDirect(actividad, entidad, registros, token);
+    } catch (directErr) {
+        const msg = directErr?.message || '';
+        const isNetwork =
+            directErr?.name === 'TypeError' ||
+            /failed to fetch|network|load failed|cors/i.test(msg);
+        if (!isNetwork) throw directErr;
+        console.warn('DENUE directo (red), intentando proxy del servidor:', directErr);
+        return fetchDenueViaProxy(actividad, entidad, registros, token);
+    }
+}
+
 function renderDenueTable(data) {
     const area = document.getElementById('denueResultsArea');
     if (!area) return;
@@ -1282,15 +1378,8 @@ async function buscarProspectosDenue() {
     if (area) area.innerHTML = '<div class="denue-empty">Cargando resultados…</div>';
     if (countEl) countEl.textContent = '';
 
-    const qs = new URLSearchParams({ actividad, entidad, registros, token });
-
     try {
-        const res = await authFetch(`/denue/buscar?${qs.toString()}`);
-        if (!res.ok) {
-            const errBody = await res.json().catch(() => ({}));
-            throw new Error(errBody.error || `HTTP ${res.status}`);
-        }
-        const data = await res.json();
+        const data = await fetchDenueResults(actividad, entidad, registros, token);
 
         if (!Array.isArray(data) || data.length === 0) {
             state.denueResults = [];

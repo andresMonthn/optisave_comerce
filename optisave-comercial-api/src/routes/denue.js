@@ -1,10 +1,79 @@
+const https = require('https');
+
 /**
- * Proxy DENUE/INEGI — evita CORS en el navegador.
+ * INEGI DENUE a veces responde HTTP status 0 (inválido para fetch nativo).
+ * Usamos https directo para leer el cuerpo igualmente.
+ */
+function httpsGetText(url, timeoutMs = 28000) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(
+      url,
+      {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'OptiSave-Comercial/1.0',
+        },
+        timeout: timeoutMs,
+      },
+      (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => {
+          resolve({
+            statusCode: res.statusCode,
+            body: Buffer.concat(chunks).toString('utf8'),
+          });
+        });
+      }
+    );
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Tiempo de espera agotado al consultar INEGI.'));
+    });
+    req.on('error', reject);
+  });
+}
+
+function buildDenueUrl(condicion, entidad, regIni, regFin, token) {
+  const condEnc = encodeURIComponent(condicion);
+  const ent = String(entidad).trim().padStart(2, '0');
+  const tokenClean = String(token).trim();
+  return (
+    `https://www.inegi.org.mx/app/api/denue/v1/consulta/BuscarEntidad/` +
+    `${condEnc}/${ent}/${regIni}/${regFin}/${tokenClean}`
+  );
+}
+
+function parseDenueJson(text) {
+  if (!text || !String(text).trim()) {
+    throw new Error('INEGI no devolvió contenido. Verifica tu token DENUE.');
+  }
+
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error('INEGI no devolvió JSON válido.');
+  }
+
+  if (!Array.isArray(data)) {
+    const msg =
+      data?.mensaje ||
+      data?.Message ||
+      data?.message ||
+      data?.error ||
+      'Token DENUE inválido o consulta rechazada por INEGI.';
+    const err = new Error(msg);
+    err.statusCode = 401;
+    throw err;
+  }
+
+  return data.map(normalizeDenueRow);
+}
+
+/**
+ * Proxy DENUE/INEGI — respaldo si el navegador no puede conectar.
  * Solo administrador. El token lo envía el cliente (localStorage).
- *
- * Formato oficial INEGI (BuscarEntidad):
- * /consulta/BuscarEntidad/{condicion}/{entidad}/{registro_inicial}/{registro_final}/{token}
- * @see https://www.inegi.org.mx/servicios/api_denue.html
  */
 async function denueRoutes(fastify, opts) {
   fastify.get('/denue/buscar', { preHandler: fastify.requireAdmin }, async (request, reply) => {
@@ -18,64 +87,47 @@ async function denueRoutes(fastify, opts) {
     }
 
     const numReg = Math.min(1000, Math.max(1, parseInt(registros, 10) || 200));
-    const ent = String(entidad).trim().padStart(2, '0');
-    const regIni = 1;
-    const regFin = numReg;
-    const tokenRaw = String(token).trim();
-
-    // INEGI: varias palabras separadas por coma; normalizamos espacios → comas
     const condicion = String(actividad)
       .trim()
       .split(/[\s,]+/)
       .filter(Boolean)
       .join(',');
-    const condicionEnc = encodeURIComponent(condicion);
 
-    const url =
-      `https://www.inegi.org.mx/app/api/denue/v1/consulta/BuscarEntidad/` +
-      `${condicionEnc}/${ent}/${regIni}/${regFin}/${tokenRaw}`;
+    const url = buildDenueUrl(condicion, entidad, 1, numReg, token);
 
     try {
-      const resp = await fetch(url, {
-        headers: { Accept: 'application/json' },
-        redirect: 'follow',
-      });
-      const text = await resp.text();
+      const { statusCode, body } = await httpsGetText(url);
 
-      if (!resp.ok) {
-        request.log.warn({ status: resp.status, url: url.replace(tokenRaw, '***') }, 'DENUE error');
-        return reply.code(resp.status).send({
-          error: resp.status === 404
-            ? 'INEGI no encontró la consulta. Verifica token, entidad y palabras clave.'
-            : `INEGI respondió HTTP ${resp.status}`,
-          detalle: text.slice(0, 300),
+      if (statusCode === 0) {
+        try {
+          return parseDenueJson(body);
+        } catch (err) {
+          return reply.code(err.statusCode || 401).send({
+            error: err.message,
+            detalle: body?.slice(0, 300),
+          });
+        }
+      }
+
+      if (statusCode >= 400) {
+        return reply.code(statusCode).send({
+          error: `INEGI respondió HTTP ${statusCode}`,
+          detalle: body?.slice(0, 300),
         });
       }
 
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        return reply.code(502).send({ error: 'INEGI no devolvió JSON válido.', detalle: text.slice(0, 200) });
-      }
-
-      if (!Array.isArray(data)) {
-        const msg = data?.mensaje || data?.message || data?.error;
-        return reply.code(502).send({
-          error: msg || 'Respuesta inesperada de INEGI (revisa que el token sea válido).',
-          detalle: data,
-        });
-      }
-
-      return data.map(normalizeDenueRow);
+      const rows = parseDenueJson(body);
+      return rows;
     } catch (err) {
       request.log.error(err);
-      return reply.code(502).send({ error: 'No se pudo consultar DENUE/INEGI.' });
+      const code = err.statusCode || 502;
+      return reply.code(code).send({
+        error: err.message || 'No se pudo consultar DENUE/INEGI.',
+      });
     }
   });
 }
 
-/** Unifica nombres de campos entre versiones de la API DENUE */
 function normalizeDenueRow(row) {
   if (!row || typeof row !== 'object') return row;
   return {
