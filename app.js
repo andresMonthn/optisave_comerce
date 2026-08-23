@@ -68,6 +68,8 @@ const state = {
 };
 
 const DENUE_TOKEN_KEY = 'optisave_denue_token';
+const DENUE_PAGE_SIZE = 25;
+const DENUE_DIRECT_TIMEOUT_MS = 35000;
 
 // Aplica un estado visual (ok / warn / error) a un elemento de texto sin
 // pisar los colores del tema con estilos en línea.
@@ -1221,18 +1223,26 @@ function setDenueStatus(msg, kind) {
     setStatus(document.getElementById('denueStatus'), msg, kind);
 }
 
-function buildDenueInegiUrl(actividad, entidad, registros, token) {
+function buildDenueInegiUrl(actividad, entidad, regIni, regFin, token) {
     const condicion = String(actividad)
         .trim()
         .split(/[\s,]+/)
         .filter(Boolean)
         .join(',');
     const ent = String(entidad).trim().padStart(2, '0');
-    const regFin = Math.min(1000, Math.max(1, parseInt(registros, 10) || 200));
     const tokenClean = String(token).trim();
     return (
         `https://www.inegi.org.mx/app/api/denue/v1/consulta/BuscarEntidad/` +
-        `${encodeURIComponent(condicion)}/${ent}/1/${regFin}/${tokenClean}`
+        `${encodeURIComponent(condicion)}/${ent}/${regIni}/${regFin}/${tokenClean}`
+    );
+}
+
+function isDenueNetworkError(err) {
+    const msg = err?.message || '';
+    return (
+        err?.name === 'TypeError' ||
+        err?.name === 'AbortError' ||
+        /failed to fetch|network|load failed|cors|abort/i.test(msg)
     );
 }
 
@@ -1278,22 +1288,42 @@ function parseDenueResponseText(text) {
     return data.map(normalizeDenueRow);
 }
 
-async function fetchDenueDirect(actividad, entidad, registros, token) {
-    const url = buildDenueInegiUrl(actividad, entidad, registros, token);
-    const resp = await fetch(url, { headers: { Accept: 'application/json' } });
-    const text = await resp.text();
-
-    if (resp.status === 0) {
-        return parseDenueResponseText(text);
+async function fetchDenueDirectPage(actividad, entidad, regIni, regFin, token) {
+    const url = buildDenueInegiUrl(actividad, entidad, regIni, regFin, token);
+    let lastErr;
+    for (let attempt = 0; attempt <= 1; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), DENUE_DIRECT_TIMEOUT_MS);
+        try {
+            const resp = await fetch(url, { mode: 'cors', cache: 'no-store', signal: controller.signal });
+            const text = await resp.text();
+            if (text) return parseDenueResponseText(text);
+            throw new Error(`INEGI respondió HTTP ${resp.status || 'desconocido'}.`);
+        } catch (err) {
+            lastErr = err;
+            const retryable =
+                err?.name === 'AbortError' ||
+                (isDenueNetworkError(err) && attempt < 1);
+            if (!retryable) break;
+            await new Promise((r) => setTimeout(r, 1500));
+        } finally {
+            clearTimeout(timer);
+        }
     }
-    if (!resp.ok && !text) {
-        throw new Error(`INEGI respondió HTTP ${resp.status || 'desconocido'}.`);
+    if (lastErr?.name === 'AbortError') {
+        throw new Error('INEGI tardó demasiado. Se intentará vía servidor.');
     }
-    return parseDenueResponseText(text);
+    throw lastErr;
 }
 
-async function fetchDenueViaProxy(actividad, entidad, registros, token) {
-    const qs = new URLSearchParams({ actividad, entidad, registros, token });
+async function fetchDenueProxyPage(actividad, entidad, regIni, count, token) {
+    const qs = new URLSearchParams({
+        actividad,
+        entidad,
+        registros: String(count),
+        regIni: String(regIni),
+        token,
+    });
     const res = await authFetch(`/denue/buscar?${qs.toString()}`);
     if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
@@ -1303,18 +1333,37 @@ async function fetchDenueViaProxy(actividad, entidad, registros, token) {
     return res.json();
 }
 
-async function fetchDenueResults(actividad, entidad, registros, token) {
-    try {
-        return await fetchDenueDirect(actividad, entidad, registros, token);
-    } catch (directErr) {
-        const msg = directErr?.message || '';
-        const isNetwork =
-            directErr?.name === 'TypeError' ||
-            /failed to fetch|network|load failed|cors/i.test(msg);
-        if (!isNetwork) throw directErr;
-        console.warn('DENUE directo (red), intentando proxy del servidor:', directErr);
-        return fetchDenueViaProxy(actividad, entidad, registros, token);
+async function fetchDenueResults(actividad, entidad, totalRegistros, token, onProgress) {
+    const total = Math.min(1000, Math.max(1, parseInt(totalRegistros, 10) || 50));
+    const all = [];
+    let useProxy = false;
+
+    for (let regIni = 1; regIni <= total; regIni += DENUE_PAGE_SIZE) {
+        const regFin = Math.min(regIni + DENUE_PAGE_SIZE - 1, total);
+        const count = regFin - regIni + 1;
+
+        if (onProgress) onProgress(all.length, total);
+
+        let page;
+        if (!useProxy) {
+            try {
+                page = await fetchDenueDirectPage(actividad, entidad, regIni, regFin, token);
+            } catch (directErr) {
+                if (!isDenueNetworkError(directErr)) throw directErr;
+                useProxy = true;
+                if (onProgress) onProgress(all.length, total, true);
+                page = await fetchDenueProxyPage(actividad, entidad, regIni, count, token);
+            }
+        } else {
+            page = await fetchDenueProxyPage(actividad, entidad, regIni, count, token);
+        }
+
+        if (!page.length) break;
+        all.push(...page);
+        if (page.length < count) break;
     }
+
+    return all;
 }
 
 function renderDenueTable(data) {
@@ -1355,7 +1404,7 @@ async function buscarProspectosDenue() {
     const token = document.getElementById('denueToken')?.value.trim();
     const actividad = document.getElementById('denueActividad')?.value.trim();
     const entidad = document.getElementById('denueEntidad')?.value || '22';
-    const registros = document.getElementById('denueRegistros')?.value || '200';
+    const registros = document.getElementById('denueRegistros')?.value || '25';
     const btn = document.getElementById('denueBuscarBtn');
     const csvBtn = document.getElementById('denueCsvBtn');
     const countEl = document.getElementById('denueCount');
@@ -1379,7 +1428,19 @@ async function buscarProspectosDenue() {
     if (countEl) countEl.textContent = '';
 
     try {
-        const data = await fetchDenueResults(actividad, entidad, registros, token);
+        const data = await fetchDenueResults(
+            actividad,
+            entidad,
+            registros,
+            token,
+            (loaded, total, viaProxy) =>
+                setDenueStatus(
+                    viaProxy
+                        ? `Consultando DENUE vía servidor… ${loaded} / ${total}`
+                        : `Consultando DENUE… ${loaded} / ${total}`,
+                    ''
+                )
+        );
 
         if (!Array.isArray(data) || data.length === 0) {
             state.denueResults = [];

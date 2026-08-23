@@ -1,10 +1,13 @@
 const https = require('https');
 
+const PAGE_TIMEOUT_MS = process.env.VERCEL ? 45000 : 20000;
+const MAX_PER_REQUEST = 25;
+const MAX_RETRIES = 1;
+
 /**
  * INEGI DENUE a veces responde HTTP status 0 (inválido para fetch nativo).
- * Usamos https directo para leer el cuerpo igualmente.
  */
-function httpsGetText(url, timeoutMs = 28000) {
+function httpsGetText(url, timeoutMs = PAGE_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     const req = https.get(
       url,
@@ -13,7 +16,6 @@ function httpsGetText(url, timeoutMs = 28000) {
           Accept: 'application/json',
           'User-Agent': 'OptiSave-Comercial/1.0',
         },
-        timeout: timeoutMs,
       },
       (res) => {
         const chunks = [];
@@ -26,12 +28,31 @@ function httpsGetText(url, timeoutMs = 28000) {
         });
       }
     );
-    req.on('timeout', () => {
+    req.setTimeout(timeoutMs, () => {
       req.destroy();
-      reject(new Error('Tiempo de espera agotado al consultar INEGI.'));
+      reject(
+        new Error(
+          'INEGI tardó demasiado en responder. Prueba con menos registros o una palabra clave más corta.'
+        )
+      );
     });
     req.on('error', reject);
   });
+}
+
+async function httpsGetTextWithRetry(url, timeoutMs = PAGE_TIMEOUT_MS) {
+  let lastErr;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await httpsGetText(url, timeoutMs);
+    } catch (err) {
+      lastErr = err;
+      const retryable = /tardó demasiado|timeout|ETIMEDOUT|ECONNRESET/i.test(err.message || '');
+      if (attempt >= MAX_RETRIES || !retryable) throw err;
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+  throw lastErr;
 }
 
 function buildDenueUrl(condicion, entidad, regIni, regFin, token) {
@@ -72,12 +93,12 @@ function parseDenueJson(text) {
 }
 
 /**
- * Proxy DENUE/INEGI — respaldo si el navegador no puede conectar.
- * Solo administrador. El token lo envía el cliente (localStorage).
+ * Proxy DENUE/INEGI — consultas paginadas (lotes pequeños, INEGI responde lento).
  */
 async function denueRoutes(fastify, opts) {
   fastify.get('/denue/buscar', { preHandler: fastify.requireAdmin }, async (request, reply) => {
-    const { actividad, entidad = '22', registros = '200', token } = request.query || {};
+    const { actividad, entidad = '22', registros = '25', regIni: regIniQ, token } =
+      request.query || {};
 
     if (!token || !String(token).trim()) {
       return reply.code(400).send({ error: 'Falta el token de la API DENUE.' });
@@ -86,17 +107,20 @@ async function denueRoutes(fastify, opts) {
       return reply.code(400).send({ error: 'Falta la actividad o palabra clave.' });
     }
 
-    const numReg = Math.min(1000, Math.max(1, parseInt(registros, 10) || 200));
+    const count = Math.min(MAX_PER_REQUEST, Math.max(1, parseInt(registros, 10) || 25));
+    const regIni = Math.max(1, parseInt(regIniQ, 10) || 1);
+    const regFin = regIni + count - 1;
+
     const condicion = String(actividad)
       .trim()
       .split(/[\s,]+/)
       .filter(Boolean)
       .join(',');
 
-    const url = buildDenueUrl(condicion, entidad, 1, numReg, token);
+    const url = buildDenueUrl(condicion, entidad, regIni, regFin, token);
 
     try {
-      const { statusCode, body } = await httpsGetText(url);
+      const { statusCode, body } = await httpsGetTextWithRetry(url);
 
       if (statusCode === 0) {
         try {
@@ -116,8 +140,7 @@ async function denueRoutes(fastify, opts) {
         });
       }
 
-      const rows = parseDenueJson(body);
-      return rows;
+      return parseDenueJson(body);
     } catch (err) {
       request.log.error(err);
       const code = err.statusCode || 502;
