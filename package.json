@@ -5,7 +5,9 @@
     "node": "20.x"
   },
   "scripts": {
-    "start:api": "node optisave-comercial-api/src/server.js"
+    "start:api": "node optisave-comercial-api/src/server.js",
+    "docker:baileys": "docker compose up baileys tunnel --build",
+    "docker:tunnel-quick": "docker compose --profile quick up baileys tunnel-quick --build"
   },
   "dependencies": {
     "@fastify/cors": "^8.5.0",

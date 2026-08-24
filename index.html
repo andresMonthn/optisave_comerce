@@ -63,7 +63,7 @@
                 <button class="tab-btn" data-tab="vendedores">Vendedores</button>
                 <button class="tab-btn" data-tab="resumen">Resumen general</button>
                 <button class="tab-btn" data-tab="simulador">Simulador</button>
-                <button class="tab-btn" data-tab="prospectos">Prospectos DENUE</button>
+                <button class="tab-btn" data-tab="whatsapp">Colección WhatsApp</button>
             </div>
 
             <!-- TAB: CONFIGURACIÓN (precios/IVA, tramos de comisión, bono) -->
@@ -337,60 +337,89 @@
                 </div>
             </div>
 
-            <!-- TAB: PROSPECTOS DENUE (solo admin) -->
-            <div class="tab-panel" data-tab-panel="prospectos" id="panelProspectos">
-                <div class="card">
-                    <div class="section-title">Levantamiento de prospectos <span class="section-sub">— DENUE · INEGI</span></div>
+            <!-- TAB: COLECCIÓN WHATSAPP (vincular vía QR · servicio Docker Baileys) -->
+            <div class="tab-panel" data-tab-panel="whatsapp" id="panelWhatsApp">
+                <div class="card wa-panel">
+                    <div class="section-title">Colección WhatsApp <span class="section-sub">— vincular línea vía QR</span></div>
                     <div class="sim-subhead">
-                        Consulta el Directorio Estadístico Nacional de Unidades Económicas por actividad y ubicación.
-                        La búsqueda se hace en lotes pequeños (INEGI responde lento). Si falla, prueba con 25 registros y la palabra clave <strong>optometria</strong>.
+                        El código QR lo genera el contenedor Docker Baileys. Escanea con WhatsApp
+                        (<strong>Dispositivos vinculados → Vincular dispositivo</strong>) para conectar la línea de colección.
+                        La sesión se guarda en el volumen del contenedor.
                     </div>
 
-                    <div class="sim-controls denue-controls">
-                        <div class="col denue-field-full">
-                            <span class="label">Token API DENUE (INEGI)</span>
-                            <input type="password" id="denueToken" placeholder="Pega tu token INEGI" autocomplete="off" />
-                            <span class="text-muted denue-hint">
-                                Genéralo gratis en
-                                <a href="https://www.inegi.org.mx/app/api/denue/v1/tokenVerify.aspx" target="_blank" rel="noopener noreferrer">inegi.org.mx · token DENUE</a>.
-                                Se guarda solo en este navegador (localStorage).
-                            </span>
+                    <div class="wa-status-row">
+                        <span class="wa-status-badge" id="waStatusBadge">Desconectado</span>
+                        <span class="text-muted" id="waPhoneLine"></span>
+                    </div>
+
+                    <div class="wa-qr-wrap">
+                        <div class="wa-qr-box" id="waQrBox">
+                            <div class="wa-qr-placeholder" id="waQrPlaceholder">
+                                Inicia el servicio Docker y abre esta pestaña para ver el QR.
+                            </div>
+                            <img id="waQrImage" class="wa-qr-image" alt="Código QR WhatsApp" hidden />
                         </div>
-                        <div class="col">
-                            <span class="label">Actividad o palabra clave</span>
-                            <input type="text" id="denueActividad" value="consultorios de optometria" placeholder="ej. consultorios dentales" />
-                        </div>
-                        <div class="col">
-                            <span class="label">Entidad (código INEGI)</span>
-                            <select id="denueEntidad">
-                                <option value="22" selected>22 · Querétaro</option>
-                                <option value="01">01 · Aguascalientes</option>
-                                <option value="09">09 · Ciudad de México</option>
-                                <option value="14">14 · Jalisco</option>
-                                <option value="19">19 · Nuevo León</option>
-                                <option value="00">00 · Todo el país</option>
-                            </select>
-                        </div>
-                        <div class="col">
-                            <span class="label">Registros (máx. 1000)</span>
-                            <input type="number" id="denueRegistros" value="25" min="1" max="1000" />
+                        <div class="wa-instructions">
+                            <ol>
+                                <li>En la raíz del proyecto: <code>docker compose up baileys --build</code></li>
+                                <li>Configura <code>BAILEYS_SERVICE_URL</code> en la API si no es localhost:3001</li>
+                                <li>Abre WhatsApp en el teléfono → Menú → Dispositivos vinculados</li>
+                                <li>Escanea el QR cuando aparezca abajo</li>
+                            </ol>
                         </div>
                     </div>
 
-                    <div class="row gap-sm" style="margin-top:4px;align-items:center;">
-                        <button type="button" id="denueBuscarBtn">Buscar prospectos</button>
-                        <button type="button" id="denueCsvBtn" class="secondary-btn" disabled>Exportar CSV</button>
-                        <span class="text-muted" id="denueStatus"></span>
+                    <div class="row gap-sm wa-actions">
+                        <button type="button" id="waRefreshBtn">Actualizar QR</button>
+                        <button type="button" id="waLogoutBtn" class="secondary-btn">Desvincular</button>
+                        <span class="text-muted" id="waStatusMsg"></span>
                     </div>
                 </div>
 
-                <div class="card">
-                    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px;">
-                        <div class="section-title" style="margin:0;">Resultados</div>
-                        <span class="text-muted" id="denueCount"></span>
+                <div class="card wa-panel">
+                    <div class="section-title">Probar envío <span class="section-sub">— verificar conexión</span></div>
+                    <div class="sim-subhead">
+                        Envía un mensaje manual a un número para confirmar que WhatsApp está vinculado.
+                        Los envíos automáticos desde Supabase usarán el mismo servicio vía túnel HTTPS.
                     </div>
-                    <div id="denueResultsArea">
-                        <div class="denue-empty">Configura tu token y busca una actividad para ver prospectos.</div>
+                    <div class="sim-controls wa-test-controls">
+                        <div class="col">
+                            <span class="label">Número destino</span>
+                            <input type="tel" id="waTestPhone" placeholder="4491234567 (se envía como 521…)" autocomplete="off" />
+                        </div>
+                        <div class="col wa-test-message-col">
+                            <span class="label">Mensaje</span>
+                            <textarea id="waTestMessage" rows="3" placeholder="Hola, prueba OptiSave…"></textarea>
+                        </div>
+                    </div>
+                    <div class="row gap-sm wa-actions">
+                        <button type="button" id="waTestSendBtn" disabled>Enviar prueba</button>
+                        <span class="text-muted" id="waTestStatus"></span>
+                    </div>
+                </div>
+
+                <div class="card wa-panel">
+                    <div class="section-title">Actividad de envíos</div>
+                    <div id="waSendLogArea" class="wa-send-log-area">
+                        <div class="wa-send-log-empty">Sin envíos registrados aún.</div>
+                    </div>
+                </div>
+
+                <div class="card wa-panel wa-tunnel-card">
+                    <div class="section-title">Túnel HTTPS <span class="section-sub">— pg_cron en Supabase</span></div>
+                    <div class="sim-subhead">
+                        Usa un túnel nombrado en Cloudflare con tu dominio
+                        <strong>wa.optisave.app</strong> (URL fija HTTPS). El <strong>filtro anti-spam</strong>
+                        va en <strong>pg_cron + SQL en Supabase</strong>, no en Baileys.
+                    </div>
+                    <div class="wa-tunnel-steps">
+                        <p><strong>1.</strong> Crea el túnel en Cloudflare Zero Trust y pon el token en <code>.env</code>.</p>
+                        <p><strong>2.</strong> Levanta servicios:</p>
+                        <pre class="wa-code">docker compose up baileys tunnel --build</pre>
+                        <p><strong>3.</strong> URL fija para Supabase:</p>
+                        <pre class="wa-code">POST https://wa.optisave.app/webhook/send
+Header: x-api-key: (tu BAILEYS_API_KEY)
+Body: { "to": "521...", "message": "...", "prospectId": "uuid" }</pre>
                     </div>
                 </div>
             </div>

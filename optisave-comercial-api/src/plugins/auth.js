@@ -16,7 +16,7 @@ async function authPlugin(fastify, opts) {
     try {
       await request.jwtVerify();
     } catch (err) {
-      reply.code(401).send({ error: 'No autorizado. Inicia sesión de nuevo.' });
+      return reply.code(401).send({ error: 'No autorizado. Inicia sesión de nuevo.' });
     }
   });
 

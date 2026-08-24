@@ -1,0 +1,36 @@
+services:
+  baileys:
+    build: ./baileys-service
+    container_name: optisave-baileys
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: 3001
+      BAILEYS_API_KEY: ${BAILEYS_API_KEY:-optisave-dev-key}
+      SESSION_DIR: /app/sessions
+    volumes:
+      - baileys-sessions:/app/sessions
+    restart: unless-stopped
+
+  # Túnel fijo con tu dominio (wa.optisave.app) — requiere CLOUDFLARE_TUNNEL_TOKEN en .env
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: optisave-baileys-tunnel
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - baileys
+    restart: unless-stopped
+
+  # Túnel temporal de prueba (URL random trycloudflare.com) — solo si no tienes token aún
+  tunnel-quick:
+    image: cloudflare/cloudflared:latest
+    container_name: optisave-baileys-tunnel-quick
+    command: tunnel --no-autoupdate --url http://baileys:3001
+    depends_on:
+      - baileys
+    profiles:
+      - quick
+    restart: unless-stopped
+
+volumes:
+  baileys-sessions:

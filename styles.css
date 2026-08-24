@@ -1143,69 +1143,190 @@ table td input.whatif-input {
     font-weight: 600;
 }
 
-/* ===== DENUE / PROSPECTOS ===== */
-.denue-controls input[type="text"],
-.denue-controls input[type="password"],
-.denue-controls input[type="number"],
-.denue-controls select {
-    max-width: 100%;
-    width: 100%;
+/* ===== WHATSAPP / COLECCIÓN QR ===== */
+.wa-panel {
+    max-width: 920px;
 }
 
-.denue-field-full {
-    flex: 1 1 100% !important;
-    width: 100%;
-    min-width: 0 !important;
+.wa-status-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 16px 0 20px;
+    flex-wrap: wrap;
 }
 
-.denue-hint {
-    display: block;
-    margin-top: 6px;
+.wa-status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 14px;
+    border-radius: 999px;
     font-size: 12px;
-    line-height: 1.4;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    background: var(--glass-fill-strong);
+    color: var(--text-secondary);
 }
 
-.denue-empty {
+.wa-status-badge.wa-connected {
+    background: rgba(34, 197, 94, 0.15);
+    color: #15803d;
+}
+
+.wa-status-badge.wa-qr {
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--blue);
+}
+
+.wa-status-badge.wa-disconnected {
+    background: rgba(244, 63, 94, 0.12);
+    color: #be123c;
+}
+
+.wa-qr-wrap {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+}
+
+.wa-qr-box {
+    flex: 0 0 320px;
+    min-height: 320px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--glass-fill);
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: var(--shadow-soft);
+}
+
+.wa-qr-image {
+    width: 288px;
+    height: 288px;
+    display: block;
+    border-radius: 8px;
+}
+
+.wa-qr-placeholder {
     text-align: center;
-    padding: 48px 20px;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 12px;
+}
+
+.wa-instructions {
+    flex: 1;
+    min-width: 240px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.wa-instructions ol {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.wa-instructions code {
+    font-size: 12px;
+    background: var(--glass-fill-strong);
+    padding: 2px 6px;
+    border-radius: 6px;
+}
+
+.wa-actions {
+    align-items: center;
+    margin-top: 4px;
+}
+
+.wa-test-controls textarea {
+    width: 100%;
+    min-height: 72px;
+    resize: vertical;
+    font-family: inherit;
+    font-size: 14px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: none;
+    background: var(--glass-fill-strong);
+    color: var(--text-primary);
+}
+
+.wa-test-message-col {
+    flex: 2;
+    min-width: 240px;
+}
+
+.wa-send-log-area {
+    margin-top: 4px;
+}
+
+.wa-send-log-empty {
+    text-align: center;
+    padding: 28px 16px;
     color: var(--text-muted);
     font-size: 13px;
 }
 
-.denue-results-scroll {
-    max-height: 520px;
+.wa-send-log-scroll {
+    max-height: 280px;
 }
 
-#denueResultsTable {
-    min-width: 860px;
+.wa-send-log-table {
+    min-width: 720px;
+    font-size: 12px;
 }
 
-td.denue-name {
+.wa-log-sent {
+    color: #15803d;
     font-weight: 700;
+    text-transform: capitalize;
+}
+
+.wa-log-failed {
+    color: #be123c;
+    font-weight: 700;
+    text-transform: capitalize;
+}
+
+.wa-log-preview {
     max-width: 220px;
     text-align: left;
 }
 
-td.denue-dir {
-    color: var(--text-secondary);
-    max-width: 260px;
-    text-align: left;
-}
-
-td.denue-tel {
-    font-weight: 600;
-    color: var(--blue);
+.wa-log-time {
     white-space: nowrap;
 }
 
-td.denue-tel.empty {
-    color: var(--text-faint);
-    font-weight: 400;
+.wa-log-error {
+    color: var(--text-muted);
+    max-width: 180px;
+    font-size: 11px;
 }
 
-table td.denue-name,
-table td.denue-dir {
-    text-align: left;
+.wa-tunnel-card .wa-code {
+    background: var(--glass-fill-strong);
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 12px;
+    overflow-x: auto;
+    margin: 8px 0 12px;
+}
+
+.wa-tunnel-steps p {
+    margin: 8px 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+@media (max-width: 640px) {
+    .wa-qr-box {
+        flex: 1 1 100%;
+    }
 }
 
 table thead th:first-child,

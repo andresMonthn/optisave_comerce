@@ -21,6 +21,8 @@ const API_BASE_URL = (() => {
 //   PATCH /clientes/:id { demoAgendada, estadoSolicitado, fechaAdquisicionLicencia }
 //   GET   /clientes/pendientes-aprobacion  (admin)
 //   PATCH /clientes/:id { aprobarSolicitud | rechazarSolicitud }  (admin)
+//   GET   /whatsapp/status | /whatsapp/qr | GET /whatsapp/send-log
+//   POST  /whatsapp/send-test | POST /whatsapp/logout  (admin · proxy Baileys)
 //
 // TODAVÍA NO EXISTE — lo necesitas para que el login funcione de verdad:
 //   POST /auth/login { usuario, clave }
@@ -64,12 +66,7 @@ const state = {
     whatif: {
         months: [], // [{ web, desktop, cancelaciones }, ...] índice 0 = mes 1
     },
-    denueResults: [],
 };
-
-const DENUE_TOKEN_KEY = 'optisave_denue_token';
-const DENUE_PAGE_SIZE = 25;
-const DENUE_DIRECT_TIMEOUT_MS = 35000;
 
 // Aplica un estado visual (ok / warn / error) a un elemento de texto sin
 // pisar los colores del tema con estilos en línea.
@@ -107,16 +104,28 @@ function clearSession() {
 
 // Fetch que siempre manda el token — así, en cuanto protejas las rutas en
 // el backend, esto ya funciona sin tocar el frontend de nuevo.
+// opts.logoutOnForbidden: por defecto false — 403 no debe cerrar sesión (solo falta permiso)
 async function authFetch(path, opts = {}) {
     const headers = Object.assign({}, opts.headers || {});
     if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
     const res = await fetch(`${API_BASE_URL}${path}`, Object.assign({}, opts, { headers }));
-    if (res.status === 401 || res.status === 403) {
+    if (res.status === 401) {
         clearSession();
-        showLogin('Tu sesión expiró o no tienes permiso. Entra de nuevo.');
+        showLogin('Tu sesión expiró. Entra de nuevo.');
         throw new Error('No autorizado');
     }
+    if (res.status === 403 && opts.logoutOnForbidden) {
+        clearSession();
+        showLogin('No tienes permiso para esta acción.');
+        throw new Error('Prohibido');
+    }
     return res;
+}
+
+async function waAuthFetch(path, opts = {}) {
+    const headers = Object.assign({}, opts.headers || {});
+    if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
+    return fetch(`${API_BASE_URL}${path}`, Object.assign({}, opts, { headers }));
 }
 
 // ===================================================================
@@ -311,7 +320,9 @@ async function afterLogin() {
             renderPendientesTable();
             await recalcResumenGeneral();
             setupWhatifSimulator();
-            setupProspectosDenue();
+            setupWhatsAppPanel();
+            const waTabActive = document.querySelector('#adminTabs .tab-btn.active[data-tab="whatsapp"]');
+            if (waTabActive) startWhatsAppPolling();
         }
     } catch (err) {
         // el error ya se muestra en el subhead
@@ -1195,204 +1206,154 @@ function renderWhatifTable() {
 }
 
 // ===================================================================
-//  PROSPECTOS DENUE (admin)
+//  COLECCIÓN WHATSAPP (admin · QR vía Docker Baileys)
 // ===================================================================
-let prospectosDenueBound = false;
+let whatsAppBound = false;
+let waPollTimer = null;
+let waLogPollTimer = null;
+let waConnected = false;
 
-function loadDenueTokenFromStorage() {
-    const input = document.getElementById('denueToken');
-    if (!input) return;
-    try {
-        input.value = localStorage.getItem(DENUE_TOKEN_KEY) || '';
-    } catch {
-        input.value = '';
-    }
+function setWaStatusMsg(msg, kind) {
+    setStatus(document.getElementById('waStatusMsg'), msg, kind);
 }
 
-function saveDenueTokenToStorage() {
-    const input = document.getElementById('denueToken');
-    if (!input) return;
-    try {
-        const val = input.value.trim();
-        if (val) localStorage.setItem(DENUE_TOKEN_KEY, val);
-        else localStorage.removeItem(DENUE_TOKEN_KEY);
-    } catch { /* ignore */ }
+function setWaTestStatus(msg, kind) {
+    setStatus(document.getElementById('waTestStatus'), msg, kind);
 }
 
-function setDenueStatus(msg, kind) {
-    setStatus(document.getElementById('denueStatus'), msg, kind);
+function updateWaTestControls(connected) {
+    waConnected = connected;
+    const sendBtn = document.getElementById('waTestSendBtn');
+    if (sendBtn) sendBtn.disabled = !connected;
 }
 
-function buildDenueInegiUrl(actividad, entidad, regIni, regFin, token) {
-    const condicion = String(actividad)
-        .trim()
-        .split(/[\s,]+/)
-        .filter(Boolean)
-        .join(',');
-    const ent = String(entidad).trim().padStart(2, '0');
-    const tokenClean = String(token).trim();
-    return (
-        `https://www.inegi.org.mx/app/api/denue/v1/consulta/BuscarEntidad/` +
-        `${encodeURIComponent(condicion)}/${ent}/${regIni}/${regFin}/${tokenClean}`
-    );
-}
+function renderWhatsAppUi(data) {
+    const badge = document.getElementById('waStatusBadge');
+    const phoneEl = document.getElementById('waPhoneLine');
+    const img = document.getElementById('waQrImage');
+    const placeholder = document.getElementById('waQrPlaceholder');
 
-function isDenueNetworkError(err) {
-    const msg = err?.message || '';
-    return (
-        err?.name === 'TypeError' ||
-        err?.name === 'AbortError' ||
-        /failed to fetch|network|load failed|cors|abort/i.test(msg)
-    );
-}
+    if (!badge) return;
 
-function normalizeDenueRow(row) {
-    if (!row || typeof row !== 'object') return row;
-    return {
-        ...row,
-        Nombre: row.Nombre ?? row.nombre ?? row['Nombre del establecimiento'] ?? '',
-        Razon_social: row.Razon_social ?? row.razon_social ?? row['Razón social'] ?? '',
-        Clase_actividad: row.Clase_actividad ?? row.clase_actividad ?? row['Clase de la actividad'] ?? '',
-        Ubicacion:
-            row.Ubicacion ??
-            row.ubicacion ??
-            row['Localidad, municipio y entidad federativa'] ??
-            '',
-        Telefono: row.Telefono ?? row.telefono ?? row['Teléfono'] ?? '',
-        Municipio: row.Municipio ?? row.municipio ?? '',
-        Localidad: row.Localidad ?? row.localidad ?? '',
-        Latitud: row.Latitud ?? row.latitud ?? '',
-        Longitud: row.Longitud ?? row.longitud ?? '',
-    };
-}
+    badge.classList.remove('wa-connected', 'wa-qr', 'wa-disconnected');
 
-function parseDenueResponseText(text) {
-    if (!text || !String(text).trim()) {
-        throw new Error('INEGI no devolvió datos. Verifica que tu token DENUE sea válido.');
-    }
-    let data;
-    try {
-        data = JSON.parse(text);
-    } catch {
-        throw new Error('INEGI devolvió una respuesta que no es JSON válido.');
-    }
-    if (!Array.isArray(data)) {
-        const msg =
-            data?.mensaje ||
-            data?.Message ||
-            data?.message ||
-            data?.error ||
-            'Token DENUE inválido o consulta rechazada por INEGI.';
-        throw new Error(msg);
-    }
-    return data.map(normalizeDenueRow);
-}
-
-async function fetchDenueDirectPage(actividad, entidad, regIni, regFin, token) {
-    const url = buildDenueInegiUrl(actividad, entidad, regIni, regFin, token);
-    let lastErr;
-    for (let attempt = 0; attempt <= 1; attempt++) {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), DENUE_DIRECT_TIMEOUT_MS);
-        try {
-            const resp = await fetch(url, { mode: 'cors', cache: 'no-store', signal: controller.signal });
-            const text = await resp.text();
-            if (text) return parseDenueResponseText(text);
-            throw new Error(`INEGI respondió HTTP ${resp.status || 'desconocido'}.`);
-        } catch (err) {
-            lastErr = err;
-            const retryable =
-                err?.name === 'AbortError' ||
-                (isDenueNetworkError(err) && attempt < 1);
-            if (!retryable) break;
-            await new Promise((r) => setTimeout(r, 1500));
-        } finally {
-            clearTimeout(timer);
+    if (data.connected) {
+        badge.textContent = 'Conectado';
+        badge.classList.add('wa-connected');
+        if (phoneEl) phoneEl.textContent = data.phoneNumber ? `+${data.phoneNumber}` : '';
+        if (img) img.hidden = true;
+        if (placeholder) {
+            placeholder.hidden = false;
+            placeholder.textContent = 'WhatsApp vinculado correctamente.';
         }
+        updateWaTestControls(true);
+        stopWhatsAppPolling();
+        startWhatsAppLogPolling();
+        return;
     }
-    if (lastErr?.name === 'AbortError') {
-        throw new Error('INEGI tardó demasiado. Se intentará vía servidor.');
+
+    updateWaTestControls(false);
+    stopWhatsAppLogPolling();
+
+    if (phoneEl) phoneEl.textContent = '';
+
+    if (data.state === 'qr' && data.qr) {
+        badge.textContent = 'Escanea el QR';
+        badge.classList.add('wa-qr');
+        if (img) {
+            img.src = data.qr;
+            img.hidden = false;
+        }
+        if (placeholder) placeholder.hidden = true;
+        return;
     }
-    throw lastErr;
+
+    badge.textContent = 'Desconectado';
+    badge.classList.add('wa-disconnected');
+    if (img) img.hidden = true;
+    if (placeholder) {
+        placeholder.hidden = false;
+        placeholder.textContent = data.lastError
+            ? `Esperando QR… (${data.lastError})`
+            : 'Esperando QR del servicio Baileys…';
+    }
 }
 
-async function fetchDenueProxyPage(actividad, entidad, regIni, count, token) {
-    const qs = new URLSearchParams({
-        actividad,
-        entidad,
-        registros: String(count),
-        regIni: String(regIni),
-        token,
-    });
-    const res = await authFetch(`/denue/buscar?${qs.toString()}`);
-    if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}));
-        const detail = errBody.detalle ? ` (${String(errBody.detalle).slice(0, 120)})` : '';
-        throw new Error((errBody.error || `HTTP ${res.status}`) + detail);
-    }
-    return res.json();
-}
+async function refreshWhatsAppPanel() {
+    if (state.role !== 'admin') return;
 
-async function fetchDenueResults(actividad, entidad, totalRegistros, token, onProgress) {
-    const total = Math.min(1000, Math.max(1, parseInt(totalRegistros, 10) || 50));
-    const all = [];
-    let useProxy = false;
+    try {
+        const res = await waAuthFetch('/whatsapp/status');
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+            stopWhatsAppPolling();
+            setWaStatusMsg('Sesión expirada. Vuelve a iniciar sesión.', 'error');
+            return;
+        }
+        if (!res.ok) {
+            renderWhatsAppUi({ connected: false, state: 'disconnected', qr: null });
+            const msg = [data.error, data.detalle].filter(Boolean).join(' — ');
+            setWaStatusMsg(msg || `Error HTTP ${res.status}`, 'error');
+            updateWaTestControls(false);
+            return;
+        }
 
-    for (let regIni = 1; regIni <= total; regIni += DENUE_PAGE_SIZE) {
-        const regFin = Math.min(regIni + DENUE_PAGE_SIZE - 1, total);
-        const count = regFin - regIni + 1;
+        if (!data.connected) {
+            const qrRes = await waAuthFetch('/whatsapp/qr');
+            const qrData = await qrRes.json().catch(() => ({}));
+            if (qrRes.ok) Object.assign(data, qrData);
+        }
 
-        if (onProgress) onProgress(all.length, total);
+        renderWhatsAppUi(data);
 
-        let page;
-        if (!useProxy) {
-            try {
-                page = await fetchDenueDirectPage(actividad, entidad, regIni, regFin, token);
-            } catch (directErr) {
-                if (!isDenueNetworkError(directErr)) throw directErr;
-                useProxy = true;
-                if (onProgress) onProgress(all.length, total, true);
-                page = await fetchDenueProxyPage(actividad, entidad, regIni, count, token);
-            }
+        if (data.connected) {
+            setWaStatusMsg('Línea vinculada.', 'ok');
+            await loadWaSendLog();
+        } else if (data.state === 'qr') {
+            setWaStatusMsg('Escanea el QR con WhatsApp.', '');
         } else {
-            page = await fetchDenueProxyPage(actividad, entidad, regIni, count, token);
+            setWaStatusMsg('Generando QR…', '');
         }
-
-        if (!page.length) break;
-        all.push(...page);
-        if (page.length < count) break;
+    } catch (err) {
+        renderWhatsAppUi({ connected: false, state: 'disconnected', qr: null });
+        setWaStatusMsg('No se pudo contactar la API. ¿Está corriendo docker compose?', 'error');
+        updateWaTestControls(false);
     }
-
-    return all;
 }
 
-function renderDenueTable(data) {
-    const area = document.getElementById('denueResultsArea');
+function renderWaSendLog(items) {
+    const area = document.getElementById('waSendLogArea');
     if (!area) return;
 
-    const rows = data.map(d => {
-        const tel = (d.Telefono || '').trim();
+    if (!items?.length) {
+        area.innerHTML = '<div class="wa-send-log-empty">Sin envíos registrados aún.</div>';
+        return;
+    }
+
+    const rows = items.map(item => {
+        const statusClass = item.status === 'sent' ? 'wa-log-sent' : 'wa-log-failed';
+        const when = item.at ? new Date(item.at).toLocaleString('es-MX') : '—';
         return `<tr>
-            <td class="denue-name">${escapeHtml(d.Nombre || '')}</td>
-            <td>${escapeHtml(d.Razon_social || '')}</td>
-            <td>${escapeHtml(d.Clase_actividad || '')}</td>
-            <td class="denue-dir">${escapeHtml(d.Ubicacion || '')}</td>
-            <td class="denue-tel ${tel ? '' : 'empty'}">${tel ? escapeHtml(tel) : 'sin dato'}</td>
-            <td>${escapeHtml(d.Municipio || '')}</td>
+            <td class="${statusClass}">${escapeHtml(item.status)}</td>
+            <td>${escapeHtml(item.to || '')}</td>
+            <td class="wa-log-preview">${escapeHtml(item.preview || '')}</td>
+            <td>${escapeHtml(item.source || '')}</td>
+            <td class="wa-log-time">${escapeHtml(when)}</td>
+            <td class="wa-log-error">${escapeHtml(item.error || '')}</td>
         </tr>`;
     }).join('');
 
     area.innerHTML = `
-        <div class="table-wrap denue-results-scroll">
-            <table id="denueResultsTable">
+        <div class="table-wrap wa-send-log-scroll">
+            <table class="wa-send-log-table">
                 <thead>
                     <tr>
-                        <th>Nombre</th>
-                        <th>Razón social</th>
-                        <th>Actividad</th>
-                        <th>Dirección</th>
-                        <th>Teléfono</th>
-                        <th>Municipio</th>
+                        <th>Estado</th>
+                        <th>Destino</th>
+                        <th>Mensaje</th>
+                        <th>Origen</th>
+                        <th>Fecha</th>
+                        <th>Error</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
@@ -1400,107 +1361,115 @@ function renderDenueTable(data) {
         </div>`;
 }
 
-async function buscarProspectosDenue() {
-    const token = document.getElementById('denueToken')?.value.trim();
-    const actividad = document.getElementById('denueActividad')?.value.trim();
-    const entidad = document.getElementById('denueEntidad')?.value || '22';
-    const registros = document.getElementById('denueRegistros')?.value || '25';
-    const btn = document.getElementById('denueBuscarBtn');
-    const csvBtn = document.getElementById('denueCsvBtn');
-    const countEl = document.getElementById('denueCount');
-    const area = document.getElementById('denueResultsArea');
+async function loadWaSendLog() {
+    if (state.role !== 'admin') return;
+    try {
+        const res = await waAuthFetch('/whatsapp/send-log');
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) renderWaSendLog(data.items);
+    } catch {
+        /* ignore */
+    }
+}
 
-    saveDenueTokenToStorage();
+function startWhatsAppLogPolling() {
+    stopWhatsAppLogPolling();
+    loadWaSendLog();
+    waLogPollTimer = setInterval(loadWaSendLog, 5000);
+}
 
-    if (!token) {
-        setDenueStatus('Falta el token de la API DENUE.', 'error');
+function stopWhatsAppLogPolling() {
+    if (waLogPollTimer) {
+        clearInterval(waLogPollTimer);
+        waLogPollTimer = null;
+    }
+}
+
+async function sendWhatsAppTest() {
+    const phone = document.getElementById('waTestPhone')?.value.trim();
+    const message = document.getElementById('waTestMessage')?.value.trim();
+    const btn = document.getElementById('waTestSendBtn');
+
+    if (!phone) {
+        setWaTestStatus('Indica el número destino.', 'error');
         return;
     }
-    if (!actividad) {
-        setDenueStatus('Escribe una actividad o palabra clave.', 'error');
+    if (!message) {
+        setWaTestStatus('Escribe el mensaje de prueba.', 'error');
+        return;
+    }
+    if (!waConnected) {
+        setWaTestStatus('WhatsApp no está conectado. Escanea el QR primero.', 'error');
         return;
     }
 
     if (btn) btn.disabled = true;
-    if (csvBtn) csvBtn.disabled = true;
-    setDenueStatus('Consultando DENUE…', '');
-    if (area) area.innerHTML = '<div class="denue-empty">Cargando resultados…</div>';
-    if (countEl) countEl.textContent = '';
+    setWaTestStatus('Enviando…', '');
 
     try {
-        const data = await fetchDenueResults(
-            actividad,
-            entidad,
-            registros,
-            token,
-            (loaded, total, viaProxy) =>
-                setDenueStatus(
-                    viaProxy
-                        ? `Consultando DENUE vía servidor… ${loaded} / ${total}`
-                        : `Consultando DENUE… ${loaded} / ${total}`,
-                    ''
-                )
-        );
-
-        if (!Array.isArray(data) || data.length === 0) {
-            state.denueResults = [];
-            if (area) area.innerHTML = '<div class="denue-empty">Sin resultados. Prueba otra palabra clave o entidad.</div>';
-            setDenueStatus('Búsqueda completada — 0 resultados.', 'ok');
-            return;
-        }
-
-        state.denueResults = data;
-        renderDenueTable(data);
-        if (countEl) countEl.innerHTML = `<strong>${data.length}</strong> unidades económicas`;
-        if (csvBtn) csvBtn.disabled = false;
-        setDenueStatus('Búsqueda completada.', 'ok');
+        const res = await waAuthFetch('/whatsapp/send-test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: phone, message }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        setWaTestStatus(`Enviado a +${data.to}.`, 'ok');
+        await loadWaSendLog();
+        await refreshWhatsAppPanel();
     } catch (err) {
-        console.error('Error DENUE:', err);
-        state.denueResults = [];
-        if (area) area.innerHTML = '<div class="denue-empty">Error al consultar DENUE. Revisa tu token y la conexión.</div>';
-        setDenueStatus(err.message || 'Error al consultar DENUE.', 'error');
+        setWaTestStatus(err.message || 'No se pudo enviar.', 'error');
+        await loadWaSendLog();
+    } finally {
+        if (btn) updateWaTestControls(waConnected);
+    }
+}
+
+function startWhatsAppPolling() {
+    stopWhatsAppPolling();
+    refreshWhatsAppPanel();
+    waPollTimer = setInterval(refreshWhatsAppPanel, 4000);
+}
+
+function stopWhatsAppPolling() {
+    if (waPollTimer) {
+        clearInterval(waPollTimer);
+        waPollTimer = null;
+    }
+    stopWhatsAppLogPolling();
+}
+
+async function logoutWhatsApp() {
+    const btn = document.getElementById('waLogoutBtn');
+    if (btn) btn.disabled = true;
+    setWaStatusMsg('Desvinculando…', '');
+
+    try {
+        const res = await waAuthFetch('/whatsapp/logout', { method: 'POST' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        renderWhatsAppUi({ connected: false, state: 'disconnected', qr: null });
+        setWaStatusMsg('Sesión cerrada. Se generará un nuevo QR.', 'ok');
+        updateWaTestControls(false);
+        startWhatsAppPolling();
+    } catch (err) {
+        setWaStatusMsg(err.message || 'No se pudo desvincular.', 'error');
     } finally {
         if (btn) btn.disabled = false;
     }
 }
 
-function exportDenueCsv() {
-    const data = state.denueResults || [];
-    if (!data.length) return;
-
-    const headers = ['Nombre', 'Razon_social', 'Clase_actividad', 'Ubicacion', 'Telefono', 'Municipio', 'Localidad', 'Latitud', 'Longitud'];
-    const csvRows = [headers.join(',')];
-
-    data.forEach(d => {
-        const row = [
-            d.Nombre, d.Razon_social, d.Clase_actividad, d.Ubicacion,
-            d.Telefono, d.Municipio, d.Localidad, d.Latitud, d.Longitud,
-        ].map(v => `"${String(v || '').replace(/"/g, '""')}"`);
-        csvRows.push(row.join(','));
-    });
-
-    const blob = new Blob(['\uFEFF' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `prospectos_denue_${Date.now()}.csv`;
-    link.click();
-    URL.revokeObjectURL(link.href);
-}
-
-function setupProspectosDenue() {
+function setupWhatsAppPanel() {
     if (state.role !== 'admin') return;
-    loadDenueTokenFromStorage();
-    if (prospectosDenueBound) return;
+    if (whatsAppBound) return;
 
-    document.getElementById('denueToken')?.addEventListener('change', saveDenueTokenToStorage);
-    document.getElementById('denueToken')?.addEventListener('blur', saveDenueTokenToStorage);
-    document.getElementById('denueBuscarBtn')?.addEventListener('click', buscarProspectosDenue);
-    document.getElementById('denueCsvBtn')?.addEventListener('click', exportDenueCsv);
-    document.getElementById('denueActividad')?.addEventListener('keydown', e => {
-        if (e.key === 'Enter') buscarProspectosDenue();
+    document.getElementById('waRefreshBtn')?.addEventListener('click', () => {
+        refreshWhatsAppPanel();
     });
+    document.getElementById('waLogoutBtn')?.addEventListener('click', logoutWhatsApp);
+    document.getElementById('waTestSendBtn')?.addEventListener('click', sendWhatsAppTest);
 
-    prospectosDenueBound = true;
+    whatsAppBound = true;
 }
 
 // ===================================================================
@@ -1517,6 +1486,10 @@ function setupTabs(containerId) {
             btn.classList.add('active');
             parent.querySelector(`[data-tab-panel="${btn.dataset.tab}"]`).classList.add('active');
             if (btn.dataset.tab === 'miSimulador') renderAgentCarteraReal();
+            if (containerId === 'adminTabs') {
+                if (btn.dataset.tab === 'whatsapp') startWhatsAppPolling();
+                else stopWhatsAppPolling();
+            }
         });
     });
 }
@@ -1528,7 +1501,6 @@ document.addEventListener('DOMContentLoaded', async function () {
     setupTabs('adminTabs');
     setupTabs('vendedorTabs');
     setupDialogs();
-    setupProspectosDenue();
 
     document.getElementById('loginBtn').addEventListener('click', doLogin);
     document.getElementById('loginClave').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
@@ -1547,7 +1519,20 @@ document.addEventListener('DOMContentLoaded', async function () {
     document.getElementById('refreshConfigBtn')?.addEventListener('click', refreshConfigComercial);
 
     if (loadSession()) {
-        await afterLogin();
+        try {
+            const meRes = await fetch(`${API_BASE_URL}/auth/me`, {
+                headers: { Authorization: `Bearer ${state.token}` },
+            });
+            if (!meRes.ok) {
+                clearSession();
+                showLogin('Tu sesión expiró. Entra de nuevo.');
+            } else {
+                await afterLogin();
+            }
+        } catch {
+            clearSession();
+            showLogin('No se pudo conectar con la API. ¿Está corriendo en el puerto 3000?');
+        }
     } else {
         showLogin('');
     }

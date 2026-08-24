@@ -5,6 +5,8 @@ node_modules/
 .vercel/
 *.log
 .DS_Store
+baileys-service/sessions/
+baileys-service/node_modules/
 
 # Archivos locales con credenciales (no subir)
 valores_dev_.txt

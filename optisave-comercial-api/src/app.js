@@ -1,4 +1,5 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
+require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 const fastify = require('fastify');
 
 const mongoosePlugin = require('./plugins/mongoose');
@@ -25,7 +26,7 @@ async function buildApp(opts = {}) {
   await app.register(vendedoresRoutes);
   await app.register(clientesRoutes);
   await app.register(require('./routes/auth'));
-  await app.register(require('./routes/denue'));
+  await app.register(require('./routes/whatsapp'));
 
   app.get('/health', async () => ({ status: 'ok' }));
 
