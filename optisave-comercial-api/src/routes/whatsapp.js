@@ -68,6 +68,27 @@ async function whatsappRoutes(fastify) {
     }
   });
 
+  fastify.post('/whatsapp/check', { preHandler: fastify.requireAdmin }, async (request, reply) => {
+    const { to } = request.body || {};
+    if (!to) {
+      return reply.code(400).send({ error: 'Indica el número a verificar.' });
+    }
+    try {
+      const { ok, status, body } = await baileysRequest('/check', {
+        method: 'POST',
+        body: { to },
+      });
+      if (!ok) return reply.code(status).send(body);
+      return body;
+    } catch (err) {
+      request.log.error(err);
+      return reply.code(503).send({
+        error: 'No se pudo verificar el número en WhatsApp.',
+        detalle: 'Verifica que Baileys esté conectado.',
+      });
+    }
+  });
+
   fastify.post('/whatsapp/send-test', { preHandler: fastify.requireAdmin }, async (request, reply) => {
     const { to, message } = request.body || {};
     if (!to || message == null) {

@@ -22,7 +22,7 @@ const API_BASE_URL = (() => {
 //   GET   /clientes/pendientes-aprobacion  (admin)
 //   PATCH /clientes/:id { aprobarSolicitud | rechazarSolicitud }  (admin)
 //   GET   /whatsapp/status | /whatsapp/qr | GET /whatsapp/send-log
-//   POST  /whatsapp/send-test | POST /whatsapp/logout  (admin · proxy Baileys)
+//   POST  /whatsapp/check | /whatsapp/send-test | POST /whatsapp/logout  (admin · proxy Baileys)
 //
 // TODAVÍA NO EXISTE — lo necesitas para que el login funcione de verdad:
 //   POST /auth/login { usuario, clave }
